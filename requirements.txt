@@ -1,0 +1,12 @@
+# Core runtime dependencies (Tier 1 + Tier 2 HTTP/GUI)
+Pillow>=10.0.0
+psutil>=5.9.0
+requests>=2.31.0
+pystray>=0.19.5
+pywin32>=306; sys_platform == "win32"
+
+# Windows SMTC media controls (any Windows media player)
+winrt-runtime>=2.0.0; sys_platform == "win32"
+winrt-Windows.Foundation>=2.0.0; sys_platform == "win32"
+winrt-Windows.Media.Control>=2.0.0; sys_platform == "win32"
+winrt-Windows.Storage.Streams>=2.0.0; sys_platform == "win32"

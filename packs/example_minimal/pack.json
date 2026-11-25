@@ -1,0 +1,7 @@
+{
+  "name": "Minimal",
+  "description": "Minimalist geometric example tile pack for Start11. Replace the target path below with your own Start Menu shortcut or app AUMID.",
+  "tiles": {
+    "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Windows PowerShell\\Windows PowerShell.lnk": "sample_terminal.png"
+  }
+}

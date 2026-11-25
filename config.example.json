@@ -1,0 +1,149 @@
+{
+  "language": "en",
+  "theme": {
+    "mode": "multi_accent",
+    "accent_color": "#58BCFF",
+    "panel_alpha": 180,
+    "blur": true,
+    "corner_radius": 14
+  },
+  "window": {
+    "left_width": 416,
+    "right_width": 430,
+    "outer_width": 344,
+    "gap": 10,
+    "fallback_height": 774,
+    "hide_delay_sec": 0.65,
+    "center_overlay": true,
+    "outer_columns": false,
+    "start_menu_class": "DV2ControlHost"
+  },
+  "layout": {
+    "left_widgets": [
+      "phone_adb",
+      "peripherals",
+      "media_player",
+      "system_monitor",
+      "philips_hue"
+    ],
+    "right_widgets": [
+      "ecoflow",
+      "custom_json",
+      "todoist",
+      "weather_card",
+      "calendar_card"
+    ]
+  },
+  "widgets": {
+    "system_monitor": {
+      "enabled": true,
+      "poll_interval_sec": 2.0
+    },
+    "media_player": {
+      "enabled": true,
+      "poll_interval_sec": 2.0,
+      "preferred_apps": ["spotify", "ytmusic", "tidal", "music"],
+      "spotify_like": {
+        "enabled": false,
+        "client_id": "${SPOTIFY_CLIENT_ID}"
+      }
+    },
+    "peripherals": {
+      "enabled": true,
+      "show_mouse": true,
+      "show_keyboard": true,
+      "show_gamepad": true,
+      "show_handheld": false,
+      "show_bluetooth": true,
+      "dsx_udp_enabled": false,
+      "dsx_udp_port": 6969,
+      "handheld_name": "Handheld",
+      "handheld_battery_file": ""
+    },
+    "weather": {
+      "enabled": true,
+      "city": "Kyiv",
+      "latitude": 50.4501,
+      "longitude": 30.5234,
+      "timezone": "auto",
+      "units": "metric",
+      "refresh_minutes": 20,
+      "show_card": true
+    },
+    "calendar": {
+      "enabled": true
+    },
+    "philips_hue": {
+      "enabled": false,
+      "bridge_ip": "",
+      "app_key": "${HUE_APP_KEY}",
+      "poll_interval_sec": 8.0,
+      "targets": [
+        {
+          "id": "1",
+          "kind": "groups",
+          "label": "Desk Light",
+          "icon": "bulb",
+          "dimmer": true
+        },
+        {
+          "id": "2",
+          "kind": "lights",
+          "label": "Monitor Bar",
+          "icon": "monitor",
+          "dimmer": false
+        }
+      ]
+    },
+    "phone_adb": {
+      "enabled": false,
+      "device_name": "Android Phone",
+      "adb_path": "adb",
+      "scrcpy_path": "scrcpy",
+      "device_serial": "",
+      "wifi_address": "",
+      "unlock_pin": "${PHONE_UNLOCK_PIN}",
+      "enable_sms_otp": false,
+      "enable_photos": true,
+      "auto_clip_sync": true,
+      "frame_image_path": "",
+      "image_editor_path": ""
+    },
+    "todoist": {
+      "enabled": false,
+      "api_token": "${TODOIST_API_TOKEN}",
+      "poll_interval_sec": 30.0,
+      "projects": []
+    },
+    "ecoflow": {
+      "enabled": false,
+      "mode": "mqtt",
+      "email": "${ECOFLOW_EMAIL}",
+      "password": "${ECOFLOW_PASSWORD}",
+      "device_sn": "${ECOFLOW_DEVICE_SN}",
+      "device_name": "EcoFlow Station",
+      "region": "europe",
+      "state_file": "",
+      "command_file": "",
+      "image_path": "",
+      "charge_watt_steps": [200, 400, 600, 800, 1000, 1500]
+    },
+    "custom_json": {
+      "enabled": false,
+      "allow_remote_urls": false,
+      "cards": [
+        {
+          "id": "homelab",
+          "title": "Home Lab",
+          "source": "cache/custom_metrics.json",
+          "refresh_sec": 15,
+          "click_url": ""
+        }
+      ]
+    },
+    "tile_switcher": {
+      "enabled": false,
+      "packs_dir": "packs"
+    }
+  }
+}

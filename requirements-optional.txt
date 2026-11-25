@@ -1,0 +1,12 @@
+# Optional hardware & EcoFlow MQTT integrations
+# Install selectively or all at once: pip install -r requirements-optional.txt
+
+# NVIDIA GPU utilization & temperature (falls back to nvidia-smi if omitted)
+nvidia-ml-py>=12.535.0
+
+# Wireless mouse / Logitech HID++ keyboard / DualSense HID battery polling
+hidapi>=0.14.0
+
+# EcoFlow DELTA 3 / DELTA 2 Cloud MQTT + Protobuf telemetry
+paho-mqtt>=2.0.0
+protobuf>=5.27.0

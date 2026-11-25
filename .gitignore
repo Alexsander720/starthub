@@ -1,0 +1,38 @@
+# User configuration & secrets (NEVER commit!)
+config.json
+.env
+.env.*
+*.key
+*_key.txt
+spotify_token.json
+spotify_client_id.txt
+hue_config.json
+state.json
+command.json
+
+# Runtime caches, logs, backups
+cache/
+logs/
+*.log
+*.log.*
+*.reg
+tmp*.json
+
+# Python / virtualenvs / tests
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# OS & editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
