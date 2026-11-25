@@ -9,10 +9,11 @@ import sys
 
 from . import __version__
 from .config import DEFAULT_CACHE_DIR, DEFAULT_CONFIG_PATH, load_config
+from .doctor import format_diagnostics, run_diagnostics
 from .i18n import I18n
 from .providers import ProviderHub
 from .renderer import HubRenderer
-from .surface import ensure_interactive_desktop
+from .surface import SingleInstanceGuard, ensure_interactive_desktop
 from .theme import Theme
 
 
@@ -38,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="Path to config.json")
     parser.add_argument("--demo", action="store_true", help="Launch with rich synthetic demo data (no devices/keys needed)")
     parser.add_argument("--preview", action="store_true", help="Keep wings visible on screen without waiting for Start11")
+    parser.add_argument("--settings", action="store_true", help="Open the GUI Settings window immediately on startup")
+    parser.add_argument("--doctor", action="store_true", help="Print a sanitized environment diagnostics report and exit")
+    parser.add_argument("--trigger", choices=("auto", "start11", "windows11", "hotkey"), default=None, help="Override trigger mode")
     parser.add_argument("--theme", choices=("multi_accent", "single_accent"), default=None, help="Override theme mode")
     parser.add_argument("--accent", default=None, help="Override accent color (#RRGGBB or 'windows')")
     parser.add_argument("--lang", choices=("en", "ru", "uk"), default=None, help="Override UI language")
@@ -50,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
+    if args.doctor:
+        print(format_diagnostics(run_diagnostics(args.config)))
+        return 0
+
     overrides = {}
     if args.lang:
         overrides["language"] = args.lang
@@ -59,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
             overrides["theme"]["mode"] = args.theme
         if args.accent:
             overrides["theme"]["accent_color"] = args.accent
+    if args.trigger:
+        overrides.setdefault("window", {})["trigger_mode"] = args.trigger
 
     if args.render_test is not None:
         out_dir: Path = args.render_test
@@ -81,17 +91,30 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     ensure_interactive_desktop()
+
+    guard: SingleInstanceGuard | None = None
+    if not args.preview:
+        guard = SingleInstanceGuard()
+        if not guard.acquire():
+            print("StartHub is already running (check your system tray).", file=sys.stderr)
+            return 0
+
     configure_logging(DEFAULT_CACHE_DIR)
 
     from .app import StartHubApp
 
-    app = StartHubApp(
-        config_path=args.config,
-        demo=args.demo,
-        preview=args.preview,
-        overrides=overrides,
-    )
-    app.run()
+    try:
+        app = StartHubApp(
+            config_path=args.config,
+            demo=args.demo,
+            preview=args.preview,
+            open_settings_on_start=args.settings,
+            overrides=overrides,
+        )
+        app.run()
+    finally:
+        if guard is not None:
+            guard.release()
     return 0
 
 

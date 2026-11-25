@@ -1,4 +1,4 @@
-"""Configuration loading, validation, ${ENV_VAR} expansion, and safe atomic JSON I/O."""
+"""Configuration loading, validation, presets, ${ENV_VAR} expansion, and safe atomic JSON I/O."""
 from __future__ import annotations
 
 import copy
@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import tempfile
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("starthub.config")
 
@@ -19,6 +19,93 @@ DEFAULT_CONFIG_PATH = REPO_ROOT / "config.json"
 DEFAULT_CACHE_DIR = REPO_ROOT / "cache"
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+ALL_WIDGET_IDS: Tuple[str, ...] = (
+    "phone_adb",
+    "peripherals",
+    "audio_control",
+    "media_player",
+    "system_monitor",
+    "storage_network",
+    "philips_hue",
+    "ecoflow",
+    "custom_json",
+    "tasks",
+    "focus_timer",
+    "weather_card",
+    "calendar_card",
+    "quick_actions",
+    "tile_switcher",
+)
+
+# Ready-to-use layout presets selectable in GUI Settings
+LAYOUT_PRESETS: Dict[str, Dict[str, Any]] = {
+    "balanced": {
+        "left_widgets": [
+            "phone_adb",
+            "peripherals",
+            "audio_control",
+            "media_player",
+            "system_monitor",
+            "storage_network",
+            "focus_timer",
+            "quick_actions",
+            "philips_hue",
+        ],
+        "right_widgets": [
+            "ecoflow",
+            "custom_json",
+            "weather_card",
+            "tasks",
+            "calendar_card",
+            "tile_switcher",
+        ],
+        "enabled": {
+            "peripherals": True,
+            "audio_control": True,
+            "media_player": True,
+            "system_monitor": True,
+            "storage_network": True,
+            "weather": True,
+            "tasks": True,
+            "focus_timer": True,
+            "calendar": True,
+            "quick_actions": True,
+        },
+    },
+    "minimal": {
+        "left_widgets": ["audio_control", "media_player", "system_monitor"],
+        "right_widgets": ["weather_card", "tasks", "calendar_card"],
+        "enabled": {
+            "peripherals": False,
+            "audio_control": True,
+            "media_player": True,
+            "system_monitor": True,
+            "storage_network": False,
+            "weather": True,
+            "tasks": True,
+            "focus_timer": False,
+            "calendar": True,
+            "quick_actions": False,
+        },
+    },
+    "productivity": {
+        "left_widgets": ["audio_control", "media_player", "peripherals", "system_monitor"],
+        "right_widgets": ["tasks", "focus_timer", "calendar_card", "quick_actions", "weather_card"],
+        "enabled": {
+            "peripherals": True,
+            "audio_control": True,
+            "media_player": True,
+            "system_monitor": True,
+            "storage_network": False,
+            "weather": True,
+            "tasks": True,
+            "focus_timer": True,
+            "calendar": True,
+            "quick_actions": True,
+        },
+    },
+}
 
 DEFAULT_CONFIG: Dict[str, Any] = {
     "language": "en",
@@ -30,12 +117,20 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "corner_radius": 14,
     },
     "window": {
+        "trigger_mode": "auto",  # "auto" (Start11 -> Win11 Start) | "start11" | "windows11" | "hotkey"
+        "hotkey_enabled": True,
+        "hotkey": "Alt+Space",
         "left_width": 416,
         "right_width": 430,
+        "min_wing_width": 300,
+        "adaptive_width": True,
         "outer_width": 344,
         "gap": 10,
         "fallback_height": 774,
         "hide_delay_sec": 0.65,
+        "idle_poll_ms": 40,
+        "fade_animation": True,
+        "fade_duration_ms": 120,
         "center_overlay": True,
         "outer_columns": False,
         "start_menu_class": "DV2ControlHost",
@@ -44,16 +139,21 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "left_widgets": [
             "phone_adb",
             "peripherals",
+            "audio_control",
             "media_player",
             "system_monitor",
+            "storage_network",
+            "focus_timer",
+            "quick_actions",
             "philips_hue",
         ],
         "right_widgets": [
             "ecoflow",
             "custom_json",
-            "todoist",
             "weather_card",
+            "tasks",
             "calendar_card",
+            "tile_switcher",
         ],
     },
     "widgets": {
@@ -61,9 +161,19 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "enabled": True,
             "poll_interval_sec": 2.0,
         },
-        "media_player": {
+        "storage_network": {
             "enabled": True,
             "poll_interval_sec": 2.0,
+            "drives": ["auto"],
+            "max_drives": 3,
+        },
+        "audio_control": {
+            "enabled": True,
+            "poll_interval_sec": 1.5,
+        },
+        "media_player": {
+            "enabled": True,
+            "poll_interval_sec": 1.5,
             "preferred_apps": ["spotify", "ytmusic", "tidal", "music"],
             "spotify_like": {
                 "enabled": False,
@@ -77,6 +187,8 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "show_gamepad": True,
             "show_handheld": False,
             "show_bluetooth": True,
+            "show_bt_batteries": True,
+            "auto_hide_offline": False,
             "dsx_udp_enabled": False,
             "dsx_udp_port": 6969,
             "handheld_name": "Handheld",
@@ -87,13 +199,34 @@ DEFAULT_CONFIG: Dict[str, Any] = {
             "city": "Kyiv",
             "latitude": 50.4501,
             "longitude": 30.5234,
+            "auto_geocode": True,
             "timezone": "auto",
             "units": "metric",
             "refresh_minutes": 20,
-            "show_card": True,
+            "show_card": "auto",  # True | False | "auto" (hides wing card when Start11 center overlay is active)
+        },
+        "tasks": {
+            "enabled": True,
+            "mode": "auto",  # "auto" (Todoist when enabled+token else local) | "local" | "todoist"
+            "title": "",
+        },
+        "focus_timer": {
+            "enabled": True,
+            "work_minutes": 25,
+            "break_minutes": 5,
+            "sound_on_done": True,
         },
         "calendar": {
             "enabled": True,
+        },
+        "quick_actions": {
+            "enabled": True,
+            "items": [
+                {"id": "snip", "label": "Snip", "icon": "camera", "action": "snip"},
+                {"id": "terminal", "label": "Terminal", "icon": "terminal", "action": "terminal"},
+                {"id": "lock", "label": "Lock", "icon": "lock", "action": "lock"},
+                {"id": "settings", "label": "Settings", "icon": "gear", "action": "starthub_settings"},
+            ],
         },
         "philips_hue": {
             "enabled": False,
@@ -222,6 +355,27 @@ def read_json_safe(path: Path | str, default: Any = None) -> Any:
     return copy.deepcopy(default)
 
 
+def load_raw_user_config(path: Optional[Path | str] = None) -> Dict[str, Any]:
+    """Read raw config.json WITHOUT expanding ${ENV_VAR} placeholders (safe for GUI editing)."""
+    cfg_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
+    raw = read_json_safe(cfg_path, {})
+    return raw if isinstance(raw, dict) else {}
+
+
+def save_config_patch(path: Optional[Path | str], patch: Dict[str, Any]) -> bool:
+    """Merge a partial update into raw config.json without clobbering ${ENV_VAR} placeholders."""
+    cfg_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
+    existing = load_raw_user_config(cfg_path)
+    if not existing:
+        example = REPO_ROOT / "config.example.json"
+        if example.is_file():
+            existing = read_json_safe(example, {})
+        if not isinstance(existing, dict) or not existing:
+            existing = copy.deepcopy(DEFAULT_CONFIG)
+    merged = deep_merge(existing, patch)
+    return write_json_atomic(cfg_path, merged)
+
+
 def _clamp_int(val: Any, lo: int, hi: int, fallback: int) -> int:
     try:
         return max(lo, min(hi, int(val)))
@@ -256,23 +410,58 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     theme["corner_radius"] = _clamp_int(theme.get("corner_radius", 14), 0, 24, 14)
 
     win = cfg.setdefault("window", {})
-    win["left_width"] = _clamp_int(win.get("left_width", 416), 340, 560, 416)
-    win["right_width"] = _clamp_int(win.get("right_width", 430), 340, 560, 430)
+    tmode = str(win.get("trigger_mode", "auto")).strip().lower()
+    win["trigger_mode"] = tmode if tmode in ("auto", "start11", "windows11", "hotkey") else "auto"
+    win["hotkey_enabled"] = bool(win.get("hotkey_enabled", True))
+    win["hotkey"] = str(win.get("hotkey") or "Alt+Space").strip()
+    win["left_width"] = _clamp_int(win.get("left_width", 416), 300, 560, 416)
+    win["right_width"] = _clamp_int(win.get("right_width", 430), 300, 560, 430)
+    win["min_wing_width"] = _clamp_int(win.get("min_wing_width", 300), 260, 420, 300)
+    win["adaptive_width"] = bool(win.get("adaptive_width", True))
     win["outer_width"] = _clamp_int(win.get("outer_width", 344), 280, 460, 344)
     win["gap"] = _clamp_int(win.get("gap", 10), 0, 48, 10)
     win["fallback_height"] = _clamp_int(win.get("fallback_height", 774), 500, 1440, 774)
     win["hide_delay_sec"] = _clamp_float(win.get("hide_delay_sec", 0.65), 0.1, 5.0, 0.65)
+    win["idle_poll_ms"] = _clamp_int(win.get("idle_poll_ms", 40), 16, 250, 40)
+    win["fade_animation"] = bool(win.get("fade_animation", True))
+    win["fade_duration_ms"] = _clamp_int(win.get("fade_duration_ms", 120), 40, 400, 120)
     win["center_overlay"] = bool(win.get("center_overlay", True))
     win["outer_columns"] = bool(win.get("outer_columns", False))
     win["start_menu_class"] = str(win.get("start_menu_class") or "DV2ControlHost")
 
     widgets = cfg.setdefault("widgets", {})
     weather = widgets.setdefault("weather", {})
-    weather["latitude"] = _clamp_float(weather.get("latitude", 50.4501), -90.0, 90.0, 50.4501)
-    weather["longitude"] = _clamp_float(weather.get("longitude", 30.5234), -180.0, 180.0, 30.5234)
+    lat = weather.get("latitude", 50.4501)
+    lon = weather.get("longitude", 30.5234)
+    weather["latitude"] = None if lat is None or lat == "" else _clamp_float(lat, -90.0, 90.0, 50.4501)
+    weather["longitude"] = None if lon is None or lon == "" else _clamp_float(lon, -180.0, 180.0, 30.5234)
+    weather["auto_geocode"] = bool(weather.get("auto_geocode", True))
     weather["refresh_minutes"] = _clamp_int(weather.get("refresh_minutes", 20), 5, 180, 20)
     units = str(weather.get("units", "metric")).strip().lower()
     weather["units"] = units if units in ("metric", "imperial") else "metric"
+    sc = weather.get("show_card", "auto")
+    if isinstance(sc, str):
+        sc_low = sc.strip().lower()
+        if sc_low == "auto":
+            weather["show_card"] = "auto"
+        elif sc_low in ("true", "1", "yes", "always"):
+            weather["show_card"] = True
+        else:
+            weather["show_card"] = False
+    else:
+        weather["show_card"] = bool(sc)
+
+    focus = widgets.setdefault("focus_timer", {})
+    focus["work_minutes"] = _clamp_int(focus.get("work_minutes", 25), 1, 180, 25)
+    focus["break_minutes"] = _clamp_int(focus.get("break_minutes", 5), 1, 60, 5)
+    focus["sound_on_done"] = bool(focus.get("sound_on_done", True))
+
+    sn = widgets.setdefault("storage_network", {})
+    sn["max_drives"] = _clamp_int(sn.get("max_drives", 3), 1, 4, 3)
+
+    tasks = widgets.setdefault("tasks", {})
+    t_mode = str(tasks.get("mode", "auto")).strip().lower()
+    tasks["mode"] = t_mode if t_mode in ("auto", "local", "todoist") else "auto"
 
     return cfg
 
@@ -282,6 +471,8 @@ def build_demo_config(base: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     cfg = copy.deepcopy(base if base is not None else DEFAULT_CONFIG)
     widgets = cfg["widgets"]
     widgets["system_monitor"]["enabled"] = True
+    widgets["storage_network"]["enabled"] = True
+    widgets["audio_control"]["enabled"] = True
     widgets["media_player"]["enabled"] = True
     widgets["media_player"]["spotify_like"]["enabled"] = True
     widgets["peripherals"]["enabled"] = True
@@ -290,9 +481,13 @@ def build_demo_config(base: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     widgets["peripherals"]["show_gamepad"] = True
     widgets["peripherals"]["show_handheld"] = True
     widgets["peripherals"]["show_bluetooth"] = True
+    widgets["peripherals"]["auto_hide_offline"] = False
     widgets["weather"]["enabled"] = True
     widgets["weather"]["show_card"] = False
     widgets["calendar"]["enabled"] = False
+    widgets["tasks"]["enabled"] = True
+    widgets["focus_timer"]["enabled"] = False
+    widgets["quick_actions"]["enabled"] = False
     widgets["philips_hue"]["enabled"] = True
     widgets["phone_adb"]["enabled"] = True
     widgets["phone_adb"]["device_name"] = "Pixel 9 Pro"
@@ -317,7 +512,7 @@ def build_demo_config(base: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     cfg["layout"]["right_widgets"] = [
         "ecoflow",
         "custom_json",
-        "todoist",
+        "tasks",
     ]
     return validate_config(cfg)
 
@@ -350,15 +545,32 @@ def load_config(
     return validated
 
 
-def is_widget_enabled(cfg: Dict[str, Any], widget_id: str) -> bool:
+def is_widget_enabled(
+    cfg: Dict[str, Any],
+    widget_id: str,
+    *,
+    center_overlay_active: bool = False,
+) -> bool:
     """Return whether a given layout widget ID should be displayed."""
     widgets = cfg.get("widgets", {})
     if widget_id == "weather_card":
         w = widgets.get("weather", {})
-        return bool(w.get("enabled", True) and w.get("show_card", True))
+        if not w.get("enabled", True):
+            return False
+        sc = w.get("show_card", "auto")
+        if sc == "auto":
+            return not center_overlay_active
+        return bool(sc)
     if widget_id == "calendar_card":
         return bool(widgets.get("calendar", {}).get("enabled", True))
     if widget_id == "custom_json":
         c = widgets.get("custom_json", {})
         return bool(c.get("enabled", False) and c.get("cards"))
+    if widget_id in ("tasks", "todoist"):
+        # Backwards-compatible: either new "tasks" card or legacy "todoist" widget ID
+        if widget_id == "todoist":
+            return bool(widgets.get("todoist", {}).get("enabled", False))
+        t_cfg = widgets.get("tasks", {})
+        td_cfg = widgets.get("todoist", {})
+        return bool(t_cfg.get("enabled", True) or td_cfg.get("enabled", False))
     return bool(widgets.get(widget_id, {}).get("enabled", False))

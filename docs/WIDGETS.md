@@ -1,20 +1,29 @@
 # StartHub Widget Configuration Guide
 
-All **Tier 2** widgets are **opt-in** (`"enabled": false` by default). Sensitive keys support `${ENV_VAR}` placeholders so you can store secrets in Windows user environment variables instead of plaintext in `config.json`.
+All **Tier 1** widgets work out of the box with zero API keys. All **Tier 2** widgets are opt-in (`"enabled": false` by default) and support `${ENV_VAR}` placeholders so secrets never sit in plaintext.
+
+You can configure every widget visually via **Tray → Settings...** or by editing `config.json`.
 
 ---
 
-## 1. EcoFlow Power Station (DELTA 3 / DELTA 2)
+## Tier 1 Highlights (Zero Keys)
 
-Requires optional dependencies:
+- **Audio Volume & Output Switcher (`audio_control`):** Click the speaker to Mute/Unmute, click any of the 10 volume steps, or click the device pill (`⇄`) to cycle between Headphones, Speakers, and Monitor audio outputs via Windows Core Audio.
+- **System Monitor (`system_monitor`):** Visibility-gated CPU, GPU (NVIDIA NVML / `nvidia-smi` + universal AMD/Intel Windows PDH fallback), GPU temp, and RAM.
+- **Storage & Network (`storage_network`):** Auto-detects fixed drives (`drives: ["auto"]` or explicit `["C:", "D:"]`, up to `max_drives: 3`) + live Download/Upload rates.
+- **Peripherals & Bluetooth (`peripherals`):** Reads Windows Bluetooth/BLE PnP batteries (AirPods, Sony WH-1000, MX Master BT, Keychron), Xbox/XInput controllers, DualSense (HID or DSX UDP), and Logitech HID++ (Unifying, Logi Bolt, Lightspeed). Set `"auto_hide_offline": true` to hide disconnected device slots.
+- **Tasks (`tasks`):** Works locally out of the box (`mode: "auto"` uses offline `cache/local_tasks.json`; click `+` to add tasks and click circles to complete them). Automatically switches to Todoist when `todoist.enabled` and `api_token` are configured.
+- **Focus / Pomodoro Timer (`focus_timer`):** Click the `Focus`/`Break` pill to switch phases, play/pause, or reset. Configurable `work_minutes`, `break_minutes`, and `sound_on_done`.
+- **Weather (`weather`):** Free Open-Meteo API with built-in city geocoding (`"auto_geocode": true`). Set `"show_card": "auto"` to avoid duplicating the Start11 center weather overlay.
+- **Quick Actions (`quick_actions`):** Built-in actions: `snip`, `terminal`, `lock`, `sleep`, `explorer`, `starthub_settings`, any `https://...` URL, or a custom `"command"`.
 
-```powershell
-.\.venv\Scripts\pip.exe install -r requirements-optional.txt
-```
+---
 
-### Mode A — Built-in Cloud MQTT (Recommended)
+## Tier 2 — Opt-In Modules
 
-Connects directly to EcoFlow's MQTT broker over TLS `8883` using Protobuf (DELTA 3) with JSON fallback (DELTA 2), bounded 2 MB rotating logs (`cache/logs/ecoflow.log`), and clean atomic state persistence.
+### 1. EcoFlow Power Station (DELTA 3 / DELTA 2)
+
+Requires optional extras (`.\install.ps1 -Optional`). Supports **Cloud MQTT** (TLS `8883`, Protobuf + JSON fallback, 2 MB rotating logs) or an **external `state_file`**.
 
 ```json
 "ecoflow": {
@@ -30,34 +39,16 @@ Connects directly to EcoFlow's MQTT broker over TLS `8883` using Protobuf (DELTA
 }
 ```
 
-- Leave `"device_sn": ""` to auto-discover the first bound station on your account.
-- Set `"region"` to `"europe"` or `"us"` (StartHub automatically falls back between regional endpoints).
-- Optional `"image_path"`: path to your own transparent PNG if you prefer a photo over the built-in vector silhouette.
+Leave `"device_sn": ""` to auto-discover the first bound station on your account.
 
-### Mode B — External State File
+### 2. Philips Hue (Local LAN HTTPS — 1-Click Pairing)
 
-If you already run your own EcoFlow daemon that writes a JSON snapshot:
+Open **Tray → Settings → Integrations → Philips Hue**:
+1. Click **Find Bridge** (or enter your bridge's LAN IP).
+2. Press the physical Link button on your Hue Bridge.
+3. Click **Press Link & Pair**, then **Load Rooms** → **Apply & Save**.
 
-```json
-"ecoflow": {
-  "enabled": true,
-  "mode": "state_file",
-  "state_file": "path/to/state.json",
-  "command_file": "path/to/command.json",
-  "device_name": "DELTA 3"
-}
-```
-
----
-
-## 2. Philips Hue (Local LAN HTTPS)
-
-StartHub talks **only** to private RFC1918 LAN IPv4 addresses (`192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`).
-
-1. Find your Hue Bridge IP in the Philips Hue app or your router.
-2. Generate a local `app_key` via the Hue Bridge CLIP API (press the physical Link button, then `POST https://<bridge_ip>/api` with `{"devicetype": "starthub#windows"}`).
-3. List your room/group IDs (`GET https://<bridge_ip>/api/<app_key>/groups`) and light IDs (`/lights`).
-4. Add them to `config.json`:
+Manual config equivalent:
 
 ```json
 "philips_hue": {
@@ -71,127 +62,32 @@ StartHub talks **only** to private RFC1918 LAN IPv4 addresses (`192.168.x.x`, `1
 }
 ```
 
----
+### 3. Custom JSON Cards (`columns` / `hero` / `list`)
 
-## 3. Custom JSON Cards (Home Assistant, Pi-hole, AI Quotas, Scripts)
+Reads any local JSON file or `localhost` HTTP endpoint (`http://127.0.0.1:...`). Ready-to-run Python example scripts live in [`examples/custom_json/`](../examples/custom_json/).
 
-Display any metric from a local JSON file or a `localhost` HTTP endpoint (`http://127.0.0.1:...`).
+- **`"layout": "columns"`**: 1–3 columns with big values, optional `percent` progress bars, `tag`, `sublabel`, and `status` (`info`/`ok`/`warn`/`danger`).
+- **`"layout": "hero"`**: headline `hero_value` + `hero_sub` + up to 2 lower stat tiles (`metrics`).
+- **`"layout": "list"`**: up to 4 compact key–value rows (`items: [{"label": "...", "value": "...", "status": "ok"}]`).
 
-```json
-"custom_json": {
-  "enabled": true,
-  "allow_remote_urls": false,
-  "cards": [
-    {
-      "id": "homelab",
-      "title": "Home Lab",
-      "source": "cache/homelab.json",
-      "refresh_sec": 15,
-      "click_url": "http://127.0.0.1:3000"
-    }
-  ]
-}
-```
+### 4. Todoist
 
-Have your script write JSON matching this clean schema (1 to 3 items in `metrics`):
+Set `TODOIST_API_TOKEN` (from Todoist **Settings → Integrations → Developer**) or paste it in GUI Settings under **Integrations → Tasks & Todoist**. Leave `"projects": []` to auto-discover all projects.
 
-```json
-{
-  "title": "Home Lab",
-  "badge": "3 nodes",
-  "subtitle": "Updated 19:10",
-  "url": "http://127.0.0.1:3000",
-  "metrics": [
-    { "label": "NAS Pool", "value": "64%", "percent": 64, "sublabel": "7.6 / 12 TB", "tag": "OK", "status": "ok" },
-    { "label": "Pi-hole",  "value": "24%", "percent": 24, "sublabel": "14.2k blocked", "tag": "DNS", "status": "info" },
-    { "label": "UPS Load", "value": "92%", "percent": 92, "sublabel": "Peak alert", "tag": "HIGH", "status": "danger" }
-  ]
-}
-```
+### 5. Android Phone Hub (ADB + scrcpy)
 
-Supported `"status"` values: `"info"`, `"ok"`, `"warn"`, `"danger"`. Even in `single_accent` theme mode, `"warn"` and `"danger"` preserve alert colors.
+Requires `adb` and [`scrcpy`](https://github.com/Genymobile/scrcpy) in `PATH` or configured by path. Supports 1-click screen mirror, instant phone screenshot straight to Windows clipboard (`Ctrl+V`), collapsible recent photos + gallery modal, and opt-in SMS/2FA OTP bar.
 
----
+### 6. Optional Spotify Liked Songs Heart (PKCE OAuth)
 
-## 4. Todoist
-
-1. Copy your API token from Todoist **Settings → Integrations → Developer**.
-2. Set `TODOIST_API_TOKEN` as an environment variable (recommended) or place it in `config.json`:
-
-```json
-"todoist": {
-  "enabled": true,
-  "api_token": "${TODOIST_API_TOKEN}",
-  "poll_interval_sec": 30,
-  "projects": []
-}
-```
-
-Leave `"projects": []` to auto-discover all your Todoist projects, or specify explicit `[{"id": "...", "name": "..."}]` entries to pin a custom order. Click the project title to cycle projects; click any task circle to complete it in 1 click.
-
----
-
-## 5. Android Phone Hub (ADB + scrcpy)
-
-Requires Android `adb` (Platform Tools) and [`scrcpy`](https://github.com/Genymobile/scrcpy) in `PATH` or configured by path.
-
-```json
-"phone_adb": {
-  "enabled": true,
-  "device_name": "Pixel 9 Pro",
-  "adb_path": "adb",
-  "scrcpy_path": "scrcpy",
-  "device_serial": "",
-  "wifi_address": "",
-  "unlock_pin": "${PHONE_UNLOCK_PIN}",
-  "enable_photos": true,
-  "enable_sms_otp": false,
-  "auto_clip_sync": true,
-  "frame_image_path": "",
-  "image_editor_path": ""
-}
-```
-
-- `unlock_pin` is completely optional; leave empty to skip automated lockscreen PIN entry.
-- `enable_sms_otp` queries Android's SMS inbox via ADB (requires device permissions/root on modern Android; disabled by default).
-- `frame_image_path`: optional custom phone frame PNG; defaults to the built-in vector phone chassis.
-
----
-
-## 6. Optional Spotify Liked Songs Heart (PKCE OAuth)
-
-Media transport & cover art already work for Spotify and every other player via Windows SMTC with **zero setup**. If you also want the **Like / Heart** button synced with your Spotify library:
-
-1. Create a free app at [developer.spotify.com](https://developer.spotify.com/dashboard) with Redirect URI `http://127.0.0.1:43827/callback`.
-2. Copy the 32-character Client ID (no client secret is needed — StartHub uses PKCE).
-3. Run the one-time authorization CLI:
+Run the one-time PKCE auth CLI (no client secret needed):
 
 ```powershell
 .\.venv\Scripts\python.exe -m starthub.providers.spotify_like --auth --client-id YOUR_32_CHAR_CLIENT_ID
 ```
 
-4. Enable `widgets.media_player.spotify_like.enabled: true` in `config.json` and set `SPOTIFY_CLIENT_ID`. Tokens are stored with owner-only Windows DACL permissions inside `cache/spotify_token.json`.
+Then enable `widgets.media_player.spotify_like.enabled: true` and set `SPOTIFY_CLIENT_ID`.
 
----
+### 7. Start11 Tile Pack Switcher
 
-## 7. Start11 Tile Pack Switcher
-
-Create one subfolder per pack inside `packs/` (see `packs/example_minimal/` for a template):
-
-```text
-packs/
-├── minimal_dark/
-│   ├── pack.json
-│   └── terminal.png
-└── minimal_light/
-    ├── pack.json
-    └── terminal.png
-```
-
-Enable `"tile_switcher": { "enabled": true, "packs_dir": "packs" }` in `config.json` to show the quick-switch pill in the right wing, or test from the CLI:
-
-```powershell
-python tools/tile_switcher.py --list
-python tools/tile_switcher.py --pack example_minimal          # dry-run (no registry writes)
-python tools/tile_switcher.py --pack example_minimal --apply  # backs up HKCU Start11 key, applies, refreshes
-```
+Place user-created tile packs in subfolders inside `packs/` (see `packs/example_minimal/`). Enable `"tile_switcher": { "enabled": true }` — the quick-switch pill appears in the Tasks header when Tasks is enabled, or as a dedicated **Start11 Tile Pack** bar when Tasks is disabled.

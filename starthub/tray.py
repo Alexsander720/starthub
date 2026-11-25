@@ -1,4 +1,4 @@
-"""System tray icon for StartHub (Reload config, Open config, Demo mode, Theme toggle, Pause, Quit)."""
+"""System tray icon for StartHub (Settings, Show/Hide, Demo, Theme, Diagnostics, Reload, Pause, Quit)."""
 from __future__ import annotations
 
 import logging
@@ -21,11 +21,8 @@ def render_tray_icon(accent: Tuple[int, int, int] = (88, 188, 255), paused: bool
     wing_col = (120, 128, 142, 220) if paused else (*accent, 195)
 
     draw.rounded_rectangle((2, 2, 61, 61), radius=14, fill=bg, outline=col, width=3)
-    # Left wing
     draw.rounded_rectangle((10, 15, 20, 49), radius=3, fill=wing_col)
-    # Center Start menu square
     draw.rounded_rectangle((24, 13, 40, 51), radius=4, fill=(242, 246, 252, 245))
-    # Right wing
     draw.rounded_rectangle((44, 15, 54, 49), radius=3, fill=wing_col)
     return img
 
@@ -41,8 +38,11 @@ class StartHubTray:
         is_demo: Callable[[], bool],
         is_paused: Callable[[], bool],
         is_single_accent: Callable[[], bool],
+        on_open_settings: Optional[Callable[[], None]] = None,
+        on_toggle_panels: Optional[Callable[[], None]] = None,
         on_toggle_demo: Callable[[], None],
         on_toggle_theme: Callable[[], None],
+        on_copy_diagnostics: Optional[Callable[[], None]] = None,
         on_reload_config: Callable[[], None],
         on_open_config: Callable[[], None],
         on_toggle_pause: Callable[[], None],
@@ -53,8 +53,11 @@ class StartHubTray:
         self._is_demo = is_demo
         self._is_paused = is_paused
         self._is_single_accent = is_single_accent
+        self._on_open_settings = on_open_settings
+        self._on_toggle_panels = on_toggle_panels
         self._on_toggle_demo = on_toggle_demo
         self._on_toggle_theme = on_toggle_theme
+        self._on_copy_diagnostics = on_copy_diagnostics
         self._on_reload_config = on_reload_config
         self._on_open_config = on_open_config
         self._on_toggle_pause = on_toggle_pause
@@ -69,26 +72,41 @@ class StartHubTray:
             logger.info("pystray not installed; system tray icon disabled")
             return False
 
-        menu = pystray.Menu(
+        items = [
             Item(lambda _: f"StartHub v{__version__}", action=None, enabled=False),
             pystray.Menu.SEPARATOR,
-            Item(lambda _: self._t("tray.demo_mode"), lambda _i, _m: self._on_toggle_demo(), checked=lambda _: self._is_demo()),
-            Item(
-                lambda _: self._t("tray.theme_multi") if self._is_single_accent() else self._t("tray.theme_single"),
-                lambda _i, _m: self._on_toggle_theme(),
-            ),
-            pystray.Menu.SEPARATOR,
-            Item(lambda _: self._t("tray.reload_config"), lambda _i, _m: self._on_reload_config()),
-            Item(lambda _: self._t("tray.open_config"), lambda _i, _m: self._on_open_config()),
-            Item(lambda _: self._t("tray.pause"), lambda _i, _m: self._on_toggle_pause(), checked=lambda _: self._is_paused()),
-            pystray.Menu.SEPARATOR,
-            Item(lambda _: self._t("tray.quit"), self._handle_quit),
+        ]
+        if self._on_toggle_panels:
+            items.append(Item(lambda _: self._t("tray.toggle_panels"), lambda _i, _m: self._on_toggle_panels(), default=True))
+        if self._on_open_settings:
+            items.append(Item(lambda _: self._t("tray.settings"), lambda _i, _m: self._on_open_settings()))
+        items.extend(
+            [
+                Item(lambda _: self._t("tray.demo_mode"), lambda _i, _m: self._on_toggle_demo(), checked=lambda _: self._is_demo()),
+                Item(
+                    lambda _: self._t("tray.theme_multi") if self._is_single_accent() else self._t("tray.theme_single"),
+                    lambda _i, _m: self._on_toggle_theme(),
+                ),
+                pystray.Menu.SEPARATOR,
+                Item(lambda _: self._t("tray.reload_config"), lambda _i, _m: self._on_reload_config()),
+                Item(lambda _: self._t("tray.open_config"), lambda _i, _m: self._on_open_config()),
+            ]
         )
+        if self._on_copy_diagnostics:
+            items.append(Item(lambda _: self._t("tray.copy_diagnostics"), lambda _i, _m: self._on_copy_diagnostics()))
+        items.extend(
+            [
+                Item(lambda _: self._t("tray.pause"), lambda _i, _m: self._on_toggle_pause(), checked=lambda _: self._is_paused()),
+                pystray.Menu.SEPARATOR,
+                Item(lambda _: self._t("tray.quit"), self._handle_quit),
+            ]
+        )
+
         self._icon = pystray.Icon(
             "StartHub",
             icon=render_tray_icon(self._accent, paused=self._is_paused()),
             title=f"StartHub v{__version__}",
-            menu=menu,
+            menu=pystray.Menu(*items),
         )
         try:
             self._icon.run_detached()

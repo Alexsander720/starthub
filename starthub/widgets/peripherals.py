@@ -96,21 +96,26 @@ def draw_peripherals_card(
     bt_devs = list(state.get("bt_devices") or [])
     bt_conn_cnt = sum(1 for d in bt_devs if d.get("connected"))
 
+    auto_hide = bool(cfg.get("auto_hide_offline", False))
     tiles: List[Tuple[str, str, int, bool, Tuple[int, int, int], Optional[Callable[[], None]]]] = []
     if cfg.get("show_mouse", True):
         mb = mouse.get("battery")
-        tiles.append(("mouse", f"{mb}%" if mb is not None else "—", int(mb or 0), mb is not None, ctx.theme.role("mouse"), None))
+        if not auto_hide or mb is not None:
+            tiles.append(("mouse", f"{mb}%" if mb is not None else "—", int(mb or 0), mb is not None, ctx.theme.role("mouse"), None))
     if cfg.get("show_keyboard", True):
         kb = keyboard.get("battery")
-        tiles.append(("keyboard", f"{kb}%" if kb is not None else "—", int(kb or 0), kb is not None, ctx.theme.role("keyboard"), None))
+        if not auto_hide or kb is not None:
+            tiles.append(("keyboard", f"{kb}%" if kb is not None else "—", int(kb or 0), kb is not None, ctx.theme.role("keyboard"), None))
     if cfg.get("show_gamepad", True):
         gb = gp.get("battery")
         g_on = bool(gp.get("online"))
-        tiles.append(("gamepad", f"{gb}%" if g_on and gb is not None else "—", int(gb or 0), g_on, ctx.theme.role("gamepad"), on_refresh_gamepad))
+        if not auto_hide or (g_on and gb is not None):
+            tiles.append(("gamepad", f"{gb}%" if g_on and gb is not None else "—", int(gb or 0), g_on, ctx.theme.role("gamepad"), on_refresh_gamepad))
     if cfg.get("show_handheld", False):
         hb = handheld.get("battery")
         h_ok = not handheld.get("stale", True)
-        tiles.append(("handheld", f"{hb}%" if hb is not None else "—", int(hb or 0), h_ok, ctx.theme.role("handheld"), None))
+        if not auto_hide or (h_ok and hb is not None):
+            tiles.append(("handheld", f"{hb}%" if hb is not None else "—", int(hb or 0), h_ok, ctx.theme.role("handheld"), None))
     if cfg.get("show_bluetooth", True):
         bt_txt = str(bt_conn_cnt) if bt_conn_cnt > 0 else ctx.i18n.t("peripherals.bt_on" if bt_on else "peripherals.bt_off")
         tiles.append(("bt", bt_txt, 100 if bt_on else 0, bt_on, ctx.theme.role("bluetooth"), on_toggle_bt_drawer))
@@ -266,7 +271,8 @@ def draw_bt_drawer(
                 font=ctx.font(14, "bold"),
                 fill=ctx.theme.text_primary,
             )
-            st_lbl = ctx.i18n.t("peripherals.bt_connected" if conn else "peripherals.bt_paired")
+            batt = d.get("battery")
+            st_lbl = f"{batt}%" if isinstance(batt, int) else ctx.i18n.t("peripherals.bt_connected" if conn else "peripherals.bt_paired")
             ctx.draw.text(
                 ((x2 - 112) * S, (dy1 + 12) * S),
                 st_lbl,

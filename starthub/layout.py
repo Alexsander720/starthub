@@ -1,4 +1,4 @@
-"""Dynamic vertical card stack layout + Start11 multi-panel & center-overlay geometry."""
+"""Dynamic vertical card stack layout + DPI-adaptive Start11 / Windows 11 multi-panel geometry."""
 from __future__ import annotations
 
 from collections import Counter
@@ -65,7 +65,7 @@ def compute_wing_stack(
 ) -> WingLayout:
     """Dynamically stack enabled cards vertically inside a wing with zero hardcoded coordinates.
 
-    - Pinned-bottom cards (e.g. collapsed SMS bar) always stay anchored to the bottom of the wing.
+    - Pinned-bottom cards (e.g. collapsed SMS bar or Quick Actions bar) stay anchored to the bottom.
     - Remaining vertical space is allocated to normal cards:
       * If total preferred height fits, extra space is distributed to expandable cards (capped by max_height).
       * If preferred height overflows, cards gently compress down toward min_height.
@@ -114,7 +114,6 @@ def compute_wing_stack(
         extra = avail_for_cards - pref_sum
         exp_indices = [i for i, s in enumerate(normal_specs) if s.expandable]
         if extra > 0 and exp_indices:
-            # Distribute extra height across expandable cards respecting max_height
             remaining = extra
             active = list(exp_indices)
             while remaining > 0 and active:
@@ -139,14 +138,12 @@ def compute_wing_stack(
                     break
                 active = next_active
     elif avail_for_cards >= min_sum:
-        # Proportionally compress between preferred_height and min_height
         deficit = pref_sum - avail_for_cards
         slack_sum = max(1, pref_sum - min_sum)
         for i, spec in enumerate(normal_specs):
             slack = spec.preferred_height - spec.min_height
             cut = min(slack, round(deficit * (slack / slack_sum)))
             heights[i] = spec.preferred_height - cut
-        # Clean up any 1px rounding remainder
         diff = sum(heights) - avail_for_cards
         for i in range(len(heights) - 1, -1, -1):
             if diff == 0:
@@ -169,10 +166,13 @@ def compute_wing_stack(
         y += h + gap
 
     content_bottom = slots[-1].y2 if slots else margin
-    # Logical scrollable height excludes bottom pinned bar region
     content_height = max(viewport_bottom, content_bottom + margin)
     visible_limit = viewport_bottom
-    max_scroll = max(0, (content_bottom + margin) - visible_limit) if pinned_specs else max(0, (content_bottom + margin) - wing_height)
+    max_scroll = (
+        max(0, (content_bottom + margin) - visible_limit)
+        if pinned_specs
+        else max(0, (content_bottom + margin) - wing_height)
+    )
 
     return WingLayout(
         slots=slots,
@@ -194,24 +194,62 @@ def panel_layout(
     gap: int = 10,
     has_left: bool = True,
     has_right: bool = True,
+    adaptive_width: bool = True,
+    min_wing_width: int = 300,
 ) -> Dict[str, Rect]:
-    """Compute (x, y, width, height) rects for left/right wings and optional outer columns."""
+    """Compute (x, y, width, height) rects for left/right wings without overlapping Start Menu.
+
+    On tighter 1080p / high-DPI displays (`adaptive_width=True`), each wing gracefully shrinks down
+    to `min_wing_width` to fit the real margin beside the Start menu instead of colliding with it.
+    If one side has less than `min_wing_width` (e.g. left-aligned Start menu), that wing is skipped
+    so the Start menu stays 100% clickable.
+    """
     left, top, right, bottom = start_rect
     wl, wt, wr, wb = work_area
     y = max(wt, min(top, wb - 1))
     height = max(1, min(bottom, wb) - y)
+    edge_pad = 6
 
     layout: Dict[str, Rect] = {}
+    avail_left = max(0, left - wl - gap - edge_pad)
+    avail_right = max(0, wr - right - gap - edge_pad)
+
+    eff_lw = left_width
+    eff_rw = right_width
     lx = max(wl, min(left - left_width - gap, wr - left_width))
     rx = max(wl, min(right + gap, wr - right_width))
 
     if has_left:
-        layout["left"] = (lx, y, left_width, height)
-    if has_right:
-        layout["right"] = (rx, y, right_width, height)
+        if adaptive_width:
+            if avail_left >= min_wing_width:
+                eff_lw = min(left_width, avail_left)
+                lx = left - gap - eff_lw
+                layout["left"] = (lx, y, eff_lw, height)
+        else:
+            layout["left"] = (lx, y, left_width, height)
 
-    left_anchor = lx if has_left else left
-    right_anchor = (rx + right_width) if has_right else right
+    if has_right:
+        if adaptive_width:
+            if avail_right >= min_wing_width:
+                eff_rw = min(right_width, avail_right)
+                rx = right + gap
+                layout["right"] = (rx, y, eff_rw, height)
+        else:
+            layout["right"] = (rx, y, right_width, height)
+
+    # Edge-case fallback: if neither wing fit (e.g. full-screen Start menu in hotkey/preview),
+    # place compact wings near monitor edges so the user isn't left with nothing.
+    if adaptive_width and not layout and (has_left or has_right):
+        work_w = max(1, wr - wl)
+        if has_left and work_w >= min_wing_width + 20:
+            w = min(left_width, max(min_wing_width, work_w // 3))
+            layout["left"] = (wl + edge_pad, y, w, height)
+        if has_right and work_w >= (min_wing_width * 2 + 40 if has_left else min_wing_width + 20):
+            w = min(right_width, max(min_wing_width, work_w // 3))
+            layout["right"] = (wr - edge_pad - w, y, w, height)
+
+    left_anchor = layout["left"][0] if "left" in layout else left
+    right_anchor = (layout["right"][0] + layout["right"][2]) if "right" in layout else right
     left_space = left_anchor - wl - gap * 2
     right_space = wr - right_anchor - gap * 2
 
@@ -221,6 +259,36 @@ def panel_layout(
     if right_space >= 300:
         w = min(outer_width, right_space)
         layout["calendar"] = (right_anchor + gap, y, w, height)
+    return layout
+
+
+def standalone_panel_layout(
+    work_area: Rect,
+    *,
+    left_width: int = 416,
+    right_width: int = 430,
+    wing_height: int = 774,
+    gap: int = 14,
+    has_left: bool = True,
+    has_right: bool = True,
+    min_wing_width: int = 300,
+) -> Dict[str, Rect]:
+    """Compute balanced edge/HUD panel positions for hotkey / standalone mode (no Start Menu needed)."""
+    wl, wt, wr, wb = work_area
+    work_w = max(1, wr - wl)
+    work_h = max(1, wb - wt)
+    h = min(wing_height, max(500, work_h - 48))
+    y = wt + max(16, (work_h - h) // 2)
+    margin_x = min(28, max(10, work_w // 40))
+
+    max_each = max(min_wing_width, (work_w - margin_x * 2 - gap) // 2) if (has_left and has_right) else (work_w - margin_x * 2)
+    layout: Dict[str, Rect] = {}
+    if has_left:
+        w = min(left_width, max_each)
+        layout["left"] = (wl + margin_x, y, w, h)
+    if has_right:
+        w = min(right_width, max_each)
+        layout["right"] = (wr - margin_x - w, y, w, h)
     return layout
 
 

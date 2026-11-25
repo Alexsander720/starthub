@@ -9,12 +9,16 @@ from typing import Any, Callable, Dict, List, Optional
 
 from ..config import DEFAULT_CACHE_DIR
 from ..i18n import I18n
+from .audio import AudioControlProvider
 from .custom_json import CustomJsonProvider
 from .ecoflow import EcoFlowProvider
+from .focus_timer import FocusTimerProvider
 from .hue import HueProvider
+from .local_tasks import LocalTasksProvider
 from .media import MediaProvider
 from .peripherals import PeripheralsProvider
 from .phone_adb import PhoneAdbProvider
+from .storage_network import StorageNetworkProvider
 from .system_monitor import SystemMonitorProvider
 from .todoist import TodoistProvider
 from .weather import WeatherProvider
@@ -33,11 +37,17 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
         city = "Киев"
         hue_labels = ("Свет в кабинете", "Подсветка монитора")
         todo_proj = "Сегодня"
+        audio_dev = "Наушники · Studio Pro"
+        audio_devs = [
+            {"id": "d1", "name": "Наушники (Studio Pro)", "short_name": "Наушники · Studio Pro", "active": True},
+            {"id": "d2", "name": "Динамики (Desk Audio)", "short_name": "Динамики · Desk Audio", "active": False},
+            {"id": "d3", "name": "Монитор (HDMI Audio)", "short_name": "Монитор · HDMI", "active": False},
+        ]
         todo_items = [
             {"id": "d1", "content": "Опубликовать StartHub v0.1.0 на GitHub", "priority": 4, "due": {"date": today.isoformat()}},
-            {"id": "d2", "content": "Проверить тему single_accent", "priority": 3, "due": {"date": today.isoformat()}},
-            {"id": "d3", "content": "Обновить документацию виджетов", "priority": 2, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
-            {"id": "d4", "content": "Собрать релизный архив с SHA-256", "priority": 1, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
+            {"id": "d2", "content": "Проверить тему single_accent и blur", "priority": 3, "due": {"date": today.isoformat()}},
+            {"id": "d3", "content": "Настроить виджеты через GUI Settings", "priority": 2, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
+            {"id": "d4", "content": "Проверить сборку portable ZIP с SHA-256", "priority": 1, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
         ]
         custom_cards = [
             {
@@ -46,12 +56,14 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
                 "badge": "3 сервиса",
                 "subtitle": "Демо JSON",
                 "url": "",
+                "layout": "columns",
                 "ok": True,
                 "metrics": [
                     {"label": "LLM 5ч", "value": "34%", "percent": 34, "sublabel": "сброс 22:00", "tag": "OK", "status": "info"},
                     {"label": "Неделя", "value": "68%", "percent": 68, "sublabel": "ост. 32%", "tag": "Pro", "status": "info"},
                     {"label": "GPU Cloud", "value": "19%", "percent": 19, "sublabel": "$4.20 / мес", "tag": "API", "status": "ok"},
                 ],
+                "items": [],
             },
             {
                 "id": "homelab",
@@ -59,12 +71,14 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
                 "badge": "Локально",
                 "subtitle": "JSON-виджет",
                 "url": "",
+                "layout": "columns",
                 "ok": True,
                 "metrics": [
                     {"label": "NAS Диск", "value": "64%", "percent": 64, "sublabel": "7.6 / 12 ТБ", "tag": "OK", "status": "ok"},
                     {"label": "Pi-hole", "value": "24%", "percent": 24, "sublabel": "14.2k блок", "tag": "DNS", "status": "info"},
                     {"label": "Роутер", "value": "12ms", "percent": 18, "sublabel": "940 Мбит/с", "tag": "WAN", "status": "ok"},
                 ],
+                "items": [],
             },
         ]
         sms_items = [
@@ -75,11 +89,17 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
         city = "Київ"
         hue_labels = ("Світло кабінету", "Підсвітка монітора")
         todo_proj = "Сьогодні"
+        audio_dev = "Навушники · Studio Pro"
+        audio_devs = [
+            {"id": "d1", "name": "Навушники (Studio Pro)", "short_name": "Навушники · Studio Pro", "active": True},
+            {"id": "d2", "name": "Динаміки (Desk Audio)", "short_name": "Динаміки · Desk Audio", "active": False},
+            {"id": "d3", "name": "Монітор (HDMI Audio)", "short_name": "Монітор · HDMI", "active": False},
+        ]
         todo_items = [
             {"id": "d1", "content": "Опублікувати StartHub v0.1.0 на GitHub", "priority": 4, "due": {"date": today.isoformat()}},
-            {"id": "d2", "content": "Перевірити тему single_accent", "priority": 3, "due": {"date": today.isoformat()}},
-            {"id": "d3", "content": "Оновити документацію віджетів", "priority": 2, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
-            {"id": "d4", "content": "Зібрати релізний архів із SHA-256", "priority": 1, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
+            {"id": "d2", "content": "Перевірити тему single_accent та blur", "priority": 3, "due": {"date": today.isoformat()}},
+            {"id": "d3", "content": "Налаштувати віджети через GUI Settings", "priority": 2, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
+            {"id": "d4", "content": "Перевірити збірку portable ZIP із SHA-256", "priority": 1, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
         ]
         custom_cards = [
             {
@@ -88,12 +108,14 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
                 "badge": "3 сервіси",
                 "subtitle": "Демо JSON",
                 "url": "",
+                "layout": "columns",
                 "ok": True,
                 "metrics": [
                     {"label": "LLM 5г", "value": "34%", "percent": 34, "sublabel": "скид 22:00", "tag": "OK", "status": "info"},
                     {"label": "Тиждень", "value": "68%", "percent": 68, "sublabel": "зал. 32%", "tag": "Pro", "status": "info"},
                     {"label": "GPU Cloud", "value": "19%", "percent": 19, "sublabel": "$4.20 / міс", "tag": "API", "status": "ok"},
                 ],
+                "items": [],
             },
             {
                 "id": "homelab",
@@ -101,12 +123,14 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
                 "badge": "Локально",
                 "subtitle": "JSON-віджет",
                 "url": "",
+                "layout": "columns",
                 "ok": True,
                 "metrics": [
                     {"label": "NAS Диск", "value": "64%", "percent": 64, "sublabel": "7.6 / 12 ТБ", "tag": "OK", "status": "ok"},
                     {"label": "Pi-hole", "value": "24%", "percent": 24, "sublabel": "14.2k блок", "tag": "DNS", "status": "info"},
                     {"label": "Роутер", "value": "12ms", "percent": 18, "sublabel": "940 Мбіт/с", "tag": "WAN", "status": "ok"},
                 ],
+                "items": [],
             },
         ]
         sms_items = [
@@ -117,11 +141,17 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
         city = "Kyiv"
         hue_labels = ("Office Light", "Monitor Bar")
         todo_proj = "Today"
+        audio_dev = "Headphones · Studio Pro"
+        audio_devs = [
+            {"id": "d1", "name": "Headphones (Studio Pro)", "short_name": "Headphones · Studio Pro", "active": True},
+            {"id": "d2", "name": "Speakers (Desk Audio)", "short_name": "Speakers · Desk Audio", "active": False},
+            {"id": "d3", "name": "Monitor (HDMI Audio)", "short_name": "Monitor · HDMI", "active": False},
+        ]
         todo_items = [
             {"id": "d1", "content": "Ship StartHub v0.1.0 open-source release", "priority": 4, "due": {"date": today.isoformat()}},
-            {"id": "d2", "content": "Review single_accent theme contrast", "priority": 3, "due": {"date": today.isoformat()}},
-            {"id": "d3", "content": "Finalize widget setup docs & examples", "priority": 2, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
-            {"id": "d4", "content": "Publish release ZIP with SHA-256", "priority": 1, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
+            {"id": "d2", "content": "Test Windows 11 native Start & Hotkey modes", "priority": 3, "due": {"date": today.isoformat()}},
+            {"id": "d3", "content": "Customize widgets with built-in Settings UI", "priority": 2, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
+            {"id": "d4", "content": "Verify portable ZIP release & SHA-256", "priority": 1, "due": {"date": (today + datetime.timedelta(days=1)).isoformat()}},
         ]
         custom_cards = [
             {
@@ -130,12 +160,14 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
                 "badge": "3 pools",
                 "subtitle": "Custom JSON",
                 "url": "",
+                "layout": "columns",
                 "ok": True,
                 "metrics": [
                     {"label": "5h Window", "value": "34%", "percent": 34, "sublabel": "resets 22:00", "tag": "OK", "status": "info"},
                     {"label": "Weekly", "value": "68%", "percent": 68, "sublabel": "32% left", "tag": "Pro", "status": "info"},
                     {"label": "GPU Cloud", "value": "19%", "percent": 19, "sublabel": "$4.20 / mo", "tag": "API", "status": "ok"},
                 ],
+                "items": [],
             },
             {
                 "id": "homelab",
@@ -143,12 +175,14 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
                 "badge": "Local JSON",
                 "subtitle": "3 nodes",
                 "url": "",
+                "layout": "columns",
                 "ok": True,
                 "metrics": [
                     {"label": "NAS Pool", "value": "64%", "percent": 64, "sublabel": "7.6 / 12 TB", "tag": "OK", "status": "ok"},
                     {"label": "Pi-hole", "value": "24%", "percent": 24, "sublabel": "14.2k blocked", "tag": "DNS", "status": "info"},
                     {"label": "Fiber WAN", "value": "12ms", "percent": 18, "sublabel": "940 Mbps", "tag": "UP", "status": "ok"},
                 ],
+                "items": [],
             },
         ]
         sms_items = [
@@ -158,12 +192,41 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
 
     return {
         "monitor": {"cpu": 28, "gpu": 42, "ram": 56, "temperature": 54},
+        "storage_network": {
+            "drives": [
+                {"label": "C:", "percent": 64, "free_text": "362 GB", "total_text": "1.0 TB"},
+                {"label": "D:", "percent": 48, "free_text": "1.0 TB", "total_text": "2.0 TB"},
+                {"label": "E:", "percent": 82, "free_text": "184 GB", "total_text": "1.0 TB"},
+            ],
+            "down_bps": 4_404_019.0,
+            "up_bps": 838_860.0,
+            "down_text": "4.2 MB/s",
+            "up_text": "819 KB/s",
+        },
+        "audio": {
+            "available": True,
+            "volume": 60,
+            "muted": False,
+            "device_id": "d1",
+            "device_name": audio_dev,
+            "devices": audio_devs,
+        },
+        "focus_timer": {
+            "phase": "work",
+            "running": True,
+            "remaining_sec": 1125,
+            "total_sec": 1500,
+            "percent": 25.0,
+            "display": "18:45",
+            "sessions_done": 2,
+        },
         "media": {
             "playing": True,
             "available": True,
             "title": "Midnight City (Synthwave Mix)",
             "artist": "M83 · Hurry Up, We're Dreaming",
             "app_id": "Spotify.exe",
+            "source_name": "Spotify",
             "is_spotify": True,
             "position": 148.0,
             "duration": 244.0,
@@ -183,9 +246,9 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
             "handheld": {"name": "Handheld", "battery": 84, "charging": False, "status": "Discharging", "stale": False},
             "bt_on": True,
             "bt_devices": [
-                {"name": "Sony WH-1000XM5", "connected": True},
-                {"name": "DualSense Wireless", "connected": True},
-                {"name": "Keychron Q1 Pro", "connected": False},
+                {"name": "Sony WH-1000XM5", "connected": True, "battery": 85},
+                {"name": "DualSense Wireless", "connected": True, "battery": 80},
+                {"name": "Keychron Q1 Pro", "connected": False, "battery": None},
             ],
         },
         "hue": {
@@ -231,6 +294,7 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
         "custom_json": custom_cards,
         "todoist": {
             "configured": True,
+            "is_local": False,
             "projects": [{"id": "demo", "name": todo_proj}],
             "proj_idx": 0,
             "tasks": todo_items,
@@ -262,7 +326,7 @@ def build_demo_snapshot(i18n: I18n, now: Optional[datetime.datetime] = None) -> 
 
 
 class ProviderHub:
-    """Facade combining all active providers (or synthetic --demo state) + toast notifications."""
+    """Facade combining all active Tier 1 + Tier 2 providers (or synthetic --demo state) + toast notifications."""
 
     def __init__(
         self,
@@ -288,6 +352,16 @@ class ProviderHub:
 
         widgets = config.get("widgets", {})
         self.system_monitor = SystemMonitorProvider(widgets.get("system_monitor", {}), on_change=self._notify)
+        self.storage_network = StorageNetworkProvider(widgets.get("storage_network", {}), on_change=self._notify)
+        self.audio = AudioControlProvider(
+            widgets.get("audio_control", {}), i18n, on_change=self._notify, on_toast=self.show_toast
+        )
+        self.focus_timer = FocusTimerProvider(
+            widgets.get("focus_timer", {}), i18n, on_change=self._notify, on_toast=self.show_toast
+        )
+        self.local_tasks = LocalTasksProvider(
+            widgets.get("tasks", {}), self.cache_dir, i18n, on_change=self._notify, on_toast=self.show_toast
+        )
         self.media = MediaProvider(
             widgets.get("media_player", {}), self.cache_dir, i18n, on_change=self._notify, on_toast=self.show_toast
         )
@@ -306,6 +380,17 @@ class ProviderHub:
             widgets.get("ecoflow", {}), self.cache_dir, i18n, on_change=self._notify, on_toast=self.show_toast
         )
         self.custom_json = CustomJsonProvider(widgets.get("custom_json", {}), on_change=self._notify)
+
+    def use_todoist_backend(self) -> bool:
+        widgets = self.config.get("widgets", {})
+        t_mode = str(widgets.get("tasks", {}).get("mode", "auto")).lower()
+        td_cfg = widgets.get("todoist", {})
+        td_ready = bool(td_cfg.get("enabled", False) and str(td_cfg.get("api_token") or "").strip())
+        if t_mode == "local":
+            return False
+        if t_mode == "todoist":
+            return True
+        return td_ready
 
     def _notify(self) -> None:
         if self.on_change:
@@ -331,6 +416,9 @@ class ProviderHub:
         if self.demo:
             return
         self.system_monitor.start()
+        self.storage_network.start()
+        self.audio.start()
+        self.focus_timer.start()
         self.media.start()
         self.peripherals.start()
         self.weather.start()
@@ -342,6 +430,9 @@ class ProviderHub:
 
     def stop(self) -> None:
         self.system_monitor.stop()
+        self.storage_network.stop()
+        self.audio.stop()
+        self.focus_timer.stop()
         self.media.stop()
         self.peripherals.stop()
         self.weather.stop()
@@ -357,25 +448,82 @@ class ProviderHub:
         photos_open = bool(self.phone.snapshot().get("photos_expanded", False))
         active = visible and not photos_open
         self.system_monitor.set_visible(active)
+        self.storage_network.set_visible(active)
+        self.audio.set_visible(active)
         self.media.set_visible(active)
         self.hue.set_visible(active)
 
     def snapshot(self) -> Dict[str, Any]:
         if self.demo:
             return self._demo_state
+        tasks_snap = self.todoist.snapshot() if self.use_todoist_backend() else self.local_tasks.snapshot()
         return {
             "monitor": self.system_monitor.snapshot(),
+            "storage_network": self.storage_network.snapshot(),
+            "audio": self.audio.snapshot(),
+            "focus_timer": self.focus_timer.snapshot(),
             "media": self.media.snapshot(),
             "peripherals": self.peripherals.snapshot(),
             "weather": self.weather.snapshot(),
             "hue": self.hue.snapshot(),
             "phone": self.phone.snapshot(),
-            "todoist": self.todoist.snapshot(),
+            "todoist": tasks_snap,
             "ecoflow": self.ecoflow.snapshot(),
             "custom_json": self.custom_json.snapshot(),
         }
 
-    # Demo-safe interactive helpers
+    # Interactive dispatchers (work live AND smoothly in --demo mode)
+    def toggle_demo_audio_mute(self) -> None:
+        if not self.demo:
+            self.audio.toggle_mute()
+            return
+        a = self._demo_state["audio"]
+        a["muted"] = not bool(a.get("muted"))
+        self._notify()
+
+    def set_demo_audio_volume(self, pct: int) -> None:
+        if not self.demo:
+            self.audio.set_volume(pct)
+            return
+        a = self._demo_state["audio"]
+        a["volume"] = max(0, min(100, int(pct)))
+        a["muted"] = False
+        self._notify()
+
+    def cycle_demo_audio_output(self) -> None:
+        if not self.demo:
+            self.audio.cycle_output()
+            return
+        a = self._demo_state["audio"]
+        devs = a.get("devices") or []
+        if len(devs) >= 2:
+            cur = next((i for i, d in enumerate(devs) if d.get("id") == a.get("device_id")), 0)
+            nxt = devs[(cur + 1) % len(devs)]
+            for d in devs:
+                d["active"] = d["id"] == nxt["id"]
+            a["device_id"] = nxt["id"]
+            a["device_name"] = nxt["short_name"]
+            self.show_toast(self.i18n.t("audio.toast_switched", name=nxt["short_name"]))
+            self._notify()
+
+    def toggle_demo_focus(self, action: str) -> None:
+        if not self.demo:
+            getattr(self.focus_timer, action)()
+            return
+        ft = self._demo_state["focus_timer"]
+        if action == "toggle":
+            ft["running"] = not bool(ft.get("running"))
+        elif action == "reset":
+            ft["running"] = False
+            ft["percent"] = 0.0
+            ft["display"] = "25:00" if ft["phase"] == "work" else "05:00"
+        elif action == "switch_phase":
+            ft["phase"] = "break" if ft["phase"] == "work" else "work"
+            ft["running"] = False
+            ft["percent"] = 0.0
+            ft["display"] = "25:00" if ft["phase"] == "work" else "05:00"
+        self._notify()
+
     def toggle_demo_hue(self, key: str, action: Any) -> None:
         if not self.demo:
             self.hue.command(key, action)
@@ -426,12 +574,23 @@ class ProviderHub:
 
     def toggle_demo_todoist_complete(self, idx: int) -> None:
         if not self.demo:
-            self.todoist.complete_task(idx)
+            if self.use_todoist_backend():
+                self.todoist.complete_task(idx)
+            else:
+                self.local_tasks.complete_task(idx)
             return
         tasks = self._demo_state["todoist"]["tasks"]
         if 0 <= idx < len(tasks):
             t = tasks.pop(idx)
             self.show_toast(self.i18n.t("todoist.toast_done", title=t["content"][:30]))
+
+    def cycle_tasks_project(self) -> None:
+        if self.demo:
+            return
+        if self.use_todoist_backend():
+            self.todoist.cycle_project()
+        else:
+            self.local_tasks.cycle_project()
 
     def toggle_demo_phone_flag(self, field: str) -> None:
         if not self.demo:
@@ -448,4 +607,6 @@ class ProviderHub:
     def upcoming_tasks(self, today: Optional[datetime.date] = None) -> List[Dict[str, Any]]:
         if self.demo:
             return list(self._demo_state["todoist"]["tasks"])
-        return self.todoist.upcoming_tasks(today)
+        if self.use_todoist_backend():
+            return self.todoist.upcoming_tasks(today)
+        return list(self.local_tasks.snapshot().get("tasks", []))

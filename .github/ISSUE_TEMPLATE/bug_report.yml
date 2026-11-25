@@ -1,0 +1,28 @@
+name: Bug Report
+description: Report a bug or layout issue in StartHub
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the issue clearly (screenshots are super helpful!).
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Launch StartHub with ...
+        2. Open Start Menu / press Alt+Space
+        3. Observe ...
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Sanitized Diagnostics (`python -m starthub --doctor` or Tray → Copy Diagnostics)
+      description: Never contains tokens, passwords, IPs, or personal paths.
+      render: text
+    validations:
+      required: true

@@ -1,0 +1,50 @@
+name: Build & Publish Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies + PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-optional.txt -r requirements-dev.txt pyinstaller
+      - name: Privacy scan & tests gate
+        run: |
+          python tools/scan_private.py
+          pytest -v
+      - name: Build source release ZIP + SHA-256
+        run: python tools/build_release.py
+      - name: Build portable Windows x64 executable ZIP + SHA-256
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
+          pyinstaller --noconfirm --clean starthub.spec
+          Copy-Item "config.example.json" "dist\StartHub\config.example.json" -Force
+          Copy-Item "README.md" "dist\StartHub\README.md" -Force
+          Copy-Item "LICENSE" "dist\StartHub\LICENSE" -Force
+          Copy-Item -Recurse "examples" "dist\StartHub\examples" -Force
+          $zipPath = "dist\StartHub-$tag-win64-portable.zip"
+          Compress-Archive -Path "dist\StartHub\*" -DestinationPath $zipPath -Force
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          "$hash  StartHub-$tag-win64-portable.zip" | Out-File -Encoding ascii "$zipPath.sha256"
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/starthub-*.zip
+            dist/starthub-*.zip.sha256
+            dist/StartHub-*-win64-portable.zip
+            dist/StartHub-*-win64-portable.zip.sha256

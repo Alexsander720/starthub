@@ -121,9 +121,9 @@ def render_center_part(
 
         desc = i18n.weather_description(code) if current else i18n.t("weather.loading")
         feels = i18n.t("weather.feels_like", temp=format_degree(current.get("apparent_temperature")))
-        detail = f"{desc} · {feels}"
+        detail = f"{desc} · {feels}" if current else desc
         stamp = weather.get("updated_at", 0)
-        if weather.get("offline") or not stamp or (time.time() - float(stamp) > 7200):
+        if current and (weather.get("offline") or (stamp and (time.time() - float(stamp) > 7200))):
             detail = f"{i18n.t('weather.cached')} · {detail}"
         draw_txt(inset, 60 if expanded else h - 43 * sc, fit(detail), 14, muted)
         draw_txt(inset, 79 if expanded else h - 22 * sc, str(weather.get("city") or "Kyiv"), 14, accent)
@@ -218,6 +218,12 @@ def draw_weather_card(ctx: RenderContext, box: Box, weather: Dict[str, Any], now
         codes = daily.get("weather_code") or []
         wshort = ctx.i18n.weekdays_short()
         max_rows = min(5, max(0, (y2 - y1 - 144) // 26))
+        if not dates:
+            # Clean loading skeleton rows instead of empty blank gap
+            for i in range(min(4, max_rows)):
+                ry = y1 + 142 + i * 26
+                ctx.draw.rounded_rectangle(((x1 + 16) * S, ry * S, (x1 + 92) * S, (ry + 12) * S), radius=4 * S, fill=ctx.theme.track_bg)
+                ctx.draw.rounded_rectangle(((x2 - 96) * S, ry * S, (x2 - 18) * S, (ry + 12) * S), radius=4 * S, fill=ctx.theme.track_bg)
         for i in range(min(max_rows, len(dates))):
             try:
                 day = datetime.date.fromisoformat(dates[i])

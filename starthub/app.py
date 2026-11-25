@@ -1,4 +1,12 @@
-"""StartHub Windows 11 / Start11 live companion shell (Win32 HWND tracker + Acrylic layered wings)."""
+"""StartHub Windows 11 / Start11 live companion shell.
+
+Supports:
+- Stardock Start11 (DV2ControlHost) with transparent center weather/clock overlays
+- Native Windows 11 Start Menu (StartMenuExperienceHost + DWMWA_CLOAKED)
+- Global Hotkey / Standalone HUD mode (works on any Windows 11 PC without Start11)
+- 120ms smooth ease-out fade-in via UpdateLayeredWindow SourceConstantAlpha
+- Adaptive 1080p/DPI wing widths, full live config reload, GUI Settings, and local quick-tasks
+"""
 from __future__ import annotations
 
 import ctypes
@@ -15,20 +23,39 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from PIL import Image, ImageTk
 
-from .config import DEFAULT_CACHE_DIR, DEFAULT_CONFIG_PATH, REPO_ROOT, load_config
+from .config import (
+    DEFAULT_CACHE_DIR,
+    DEFAULT_CONFIG_PATH,
+    REPO_ROOT,
+    load_config,
+    save_config_patch,
+)
+from .doctor import format_diagnostics, run_diagnostics
 from .i18n import I18n
-from .layout import CENTER_H, CENTER_SIDES, CENTER_W, calibrated_tile_grid, center_layouts, panel_layout
+from .layout import (
+    CENTER_H,
+    CENTER_SIDES,
+    CENTER_W,
+    calibrated_tile_grid,
+    center_layouts,
+    panel_layout,
+    standalone_panel_layout,
+)
 from .providers import ProviderHub
 from .renderer import HubRenderer
+from .settings_ui import SettingsWindow
 from .surface import (
     CREATE_NO_WINDOW,
     FontBank,
+    GlobalHotkey,
     IS_WINDOWS,
     LayeredSurface,
     apply_panel_blur,
     apply_win11_rounded,
     copy_image_and_file_to_clipboard,
+    copy_text_to_clipboard,
     enable_dpi_awareness,
+    find_native_win11_start_rect,
     popen_on_default_desktop,
 )
 from .theme import Theme
@@ -50,7 +77,7 @@ logger = logging.getLogger("starthub.app")
 
 
 class StartHubApp:
-    """Tracks Start11 (DV2ControlHost) and floats layered acrylic wings + center overlays beside it."""
+    """Tracks Start11 / Windows 11 Start Menu / Hotkey and floats layered acrylic wings beside it."""
 
     def __init__(
         self,
@@ -58,6 +85,7 @@ class StartHubApp:
         config_path: Optional[Path] = None,
         demo: bool = False,
         preview: bool = False,
+        open_settings_on_start: bool = False,
         overrides: Optional[Dict[str, Any]] = None,
     ):
         enable_dpi_awareness()
@@ -66,6 +94,7 @@ class StartHubApp:
         self.preview_mode = preview
         self._overrides = overrides or {}
         self._paused = False
+        self._manual_hud_visible = False
 
         self.config = load_config(self.config_path, demo=self.demo, overrides=self._overrides)
         self.i18n = I18n(self.config["language"])
@@ -80,19 +109,17 @@ class StartHubApp:
             on_change=self._request_redraw,
         )
 
-        win_cfg = self.config["window"]
-        self.lw: int = int(win_cfg["left_width"])
-        self.rw: int = int(win_cfg["right_width"])
-        self.gap: int = int(win_cfg["gap"])
-        self.wing_h: int = int(win_cfg["fallback_height"])
-        self.hide_delay: float = float(win_cfg["hide_delay_sec"])
-        self.center_overlay: bool = bool(win_cfg["center_overlay"])
-        self.start_menu_class: str = str(win_cfg["start_menu_class"])
+        self._apply_window_settings_from_config()
+        self._eff_lw: int = self.lw
+        self._eff_rw: int = self.rw
 
         self._dirty = True
         self._visible = False
+        self._active_source: Optional[str] = None  # "start11" | "windows11" | "hotkey" | "preview"
+        self._center_overlay_active = False
         self._last_interact_ts = 0.0
         self._next_hidden_render = 0.0
+        self._fade_generation = 0
         self._left_hotspots: List[Hotspot] = []
         self._right_hotspots: List[Hotspot] = []
         self._left_hover: Optional[str] = None
@@ -132,8 +159,11 @@ class StartHubApp:
         self._last_start_rect: Optional[Tuple[int, int, int, int]] = None
         self._frame_cache: Dict[str, Any] = {}
         self._gallery_win: Optional[tk.Toplevel] = None
+        self._settings_win: Optional[SettingsWindow] = None
+        self._task_dialog: Optional[tk.Toplevel] = None
         self._pending_ui_actions: List[Callable[[], None]] = []
         self._ui_lock = threading.Lock()
+        self._hotkey_listener: Optional[GlobalHotkey] = None
 
         # Detect live Start11 height before creating windows
         if IS_WINDOWS and win32gui is not None and not self.preview_mode:
@@ -142,8 +172,18 @@ class StartHubApp:
                 r = win32gui.GetWindowRect(menu)
                 if r[3] - r[1] > 200:
                     work = win32api.GetMonitorInfo(win32api.MonitorFromRect(r, win32con.MONITOR_DEFAULTTONEAREST))["Work"]
-                    lay = panel_layout(r, work, left_width=self.lw, right_width=self.rw, gap=self.gap)
-                    self.wing_h = lay["left"][3]
+                    lay = panel_layout(
+                        r,
+                        work,
+                        left_width=self.lw,
+                        right_width=self.rw,
+                        gap=self.gap,
+                        adaptive_width=self.adaptive_width,
+                        min_wing_width=self.min_wing_width,
+                    )
+                    ref_p = lay.get("left") or lay.get("right")
+                    if ref_p:
+                        self.wing_h = ref_p[3]
 
         # Build Tkinter windows
         self.root = tk.Tk()
@@ -152,7 +192,7 @@ class StartHubApp:
         self.root.overrideredirect(True)
         self.root.attributes("-topmost", True)
         self.root.configure(bg="#14161B")
-        self.left_canvas = tk.Canvas(self.root, width=self.lw, height=self.wing_h, bg="#14161B", highlightthickness=0, bd=0)
+        self.left_canvas = tk.Canvas(self.root, width=self._eff_lw, height=self.wing_h, bg="#14161B", highlightthickness=0, bd=0)
         self.left_canvas.pack(fill="both", expand=True)
         self._left_tk_img: Optional[ImageTk.PhotoImage] = None
 
@@ -162,7 +202,7 @@ class StartHubApp:
         self.right_win.overrideredirect(True)
         self.right_win.attributes("-topmost", True)
         self.right_win.configure(bg="#14161B")
-        self.right_canvas = tk.Canvas(self.right_win, width=self.rw, height=self.wing_h, bg="#14161B", highlightthickness=0, bd=0)
+        self.right_canvas = tk.Canvas(self.right_win, width=self._eff_rw, height=self.wing_h, bg="#14161B", highlightthickness=0, bd=0)
         self.right_canvas.pack(fill="both", expand=True)
         self._right_tk_img: Optional[ImageTk.PhotoImage] = None
 
@@ -196,8 +236,8 @@ class StartHubApp:
         self.right_canvas.bind("<Leave>", lambda _e: self._on_leave(False))
         self.right_canvas.bind("<MouseWheel>", lambda e: self._scroll_wing("right", e.delta))
 
-        self.root.bind("<Escape>", lambda _e: self._hide_windows())
-        self.right_win.bind("<Escape>", lambda _e: self._hide_windows())
+        self.root.bind("<Escape>", lambda _e: self._dismiss_panels())
+        self.right_win.bind("<Escape>", lambda _e: self._dismiss_panels())
         self.root.bind("<Destroy>", self._on_destroy, add="+")
 
         self.root.update_idletasks()
@@ -211,6 +251,7 @@ class StartHubApp:
 
         self._surfaces: Dict[str, LayeredSurface] = {}
         self._init_surfaces()
+        self._setup_global_hotkey()
 
         # System tray
         self.tray = StartHubTray(
@@ -219,8 +260,11 @@ class StartHubApp:
             is_demo=lambda: self.demo,
             is_paused=lambda: self._paused,
             is_single_accent=lambda: self.theme.is_single_accent,
+            on_open_settings=lambda: self._enqueue_ui(self.open_settings_window),
+            on_toggle_panels=lambda: self._enqueue_ui(self._toggle_manual_hud),
             on_toggle_demo=lambda: self._enqueue_ui(self._toggle_demo_mode),
             on_toggle_theme=lambda: self._enqueue_ui(self._toggle_theme_mode),
+            on_copy_diagnostics=lambda: self._enqueue_ui(self._copy_diagnostics_report),
             on_reload_config=lambda: self._enqueue_ui(self._reload_config),
             on_open_config=self._open_config_file,
             on_toggle_pause=lambda: self._enqueue_ui(self._toggle_pause),
@@ -240,12 +284,33 @@ class StartHubApp:
             cy = max(40, (sh - self.wing_h) // 2)
             fake_start = (cx, cy, cx + center_w, cy + self.wing_h)
             self._visible = True
-            self._place_panels(fake_start, show=True)
+            self._active_source = "preview"
+            self._place_panels(fake_start, show=True, source="preview")
 
         self.hub.start()
         if self.center_overlay and IS_WINDOWS and not self.preview_mode:
             self._prime_center_probe()
+        if open_settings_on_start:
+            self.root.after(150, self.open_settings_window)
         self.root.after(40, self._tick)
+
+    def _apply_window_settings_from_config(self) -> None:
+        win_cfg = self.config["window"]
+        self.trigger_mode: str = str(win_cfg.get("trigger_mode", "auto"))
+        self.hotkey_enabled: bool = bool(win_cfg.get("hotkey_enabled", True))
+        self.hotkey_spec: str = str(win_cfg.get("hotkey", "Alt+Space"))
+        self.lw: int = int(win_cfg["left_width"])
+        self.rw: int = int(win_cfg["right_width"])
+        self.min_wing_width: int = int(win_cfg.get("min_wing_width", 300))
+        self.adaptive_width: bool = bool(win_cfg.get("adaptive_width", True))
+        self.gap: int = int(win_cfg["gap"])
+        self.wing_h: int = int(win_cfg["fallback_height"])
+        self.hide_delay: float = float(win_cfg["hide_delay_sec"])
+        self.idle_poll_ms: int = int(win_cfg.get("idle_poll_ms", 40))
+        self.fade_animation: bool = bool(win_cfg.get("fade_animation", True))
+        self.fade_duration_ms: int = int(win_cfg.get("fade_duration_ms", 120))
+        self.center_overlay: bool = bool(win_cfg["center_overlay"])
+        self.start_menu_class: str = str(win_cfg["start_menu_class"])
 
     def _init_surfaces(self) -> None:
         for side, hwnd in self._all_hwnds().items():
@@ -259,11 +324,22 @@ class StartHubApp:
                     (ex_style | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_NOACTIVATE) & ~win32con.WS_EX_APPWINDOW,
                 )
             self._surfaces[side] = LayeredSurface(hwnd)
-            if not inset and self.theme.blur and IS_WINDOWS:
+            if not inset and IS_WINDOWS:
                 try:
-                    apply_panel_blur(hwnd)
+                    apply_panel_blur(hwnd, enabled=self.theme.blur)
                 except Exception:
                     pass
+
+    def _setup_global_hotkey(self) -> None:
+        if self._hotkey_listener is not None:
+            self._hotkey_listener.stop()
+            self._hotkey_listener = None
+        if not IS_WINDOWS or self.preview_mode:
+            return
+        if self.hotkey_enabled or self.trigger_mode == "hotkey":
+            hk = GlobalHotkey(self.hotkey_spec, lambda: self._enqueue_ui(self._toggle_manual_hud))
+            hk.start()
+            self._hotkey_listener = hk
 
     def _enqueue_ui(self, fn: Callable[[], None]) -> None:
         with self._ui_lock:
@@ -284,14 +360,136 @@ class StartHubApp:
         return win32gui.CallWindowProc(self._center_old_procs[hwnd], hwnd, message, wparam, lparam)
 
     # ------------------------------------------------------------------
-    # Tray & Runtime Actions
+    # Tray, Settings & Runtime Actions
     # ------------------------------------------------------------------
+
+    def open_settings_window(self) -> None:
+        if self._settings_win is not None and self._settings_win.win.winfo_exists():
+            self._settings_win.win.deiconify()
+            self._settings_win.win.lift()
+            return
+        self._settings_win = SettingsWindow(
+            self.root,
+            config_path=self.config_path,
+            on_apply=self._reload_config,
+        )
+
+    def _open_add_task_dialog(self) -> None:
+        if self.demo:
+            self.hub.show_toast("Demo: local tasks are interactive in live mode")
+            return
+        if self.hub.use_todoist_backend():
+            self.hub.todoist.open_app()
+            return
+        if self._task_dialog is not None and self._task_dialog.winfo_exists():
+            self._task_dialog.lift()
+            return
+        self._last_interact_ts = time.time()
+        dlg = tk.Toplevel(self.root)
+        self._task_dialog = dlg
+        dlg.title(self.i18n.t("tasks.add_title"))
+        dlg.configure(bg="#161922")
+        dlg.attributes("-topmost", True)
+        dw, dh = 380, 126
+        sx = (dlg.winfo_screenwidth() - dw) // 2
+        sy = (dlg.winfo_screenheight() - dh) // 2
+        dlg.geometry(f"{dw}x{dh}+{sx}+{sy}")
+        dlg.resizable(False, False)
+
+        tk.Label(
+            dlg,
+            text=self.i18n.t("tasks.add_prompt"),
+            font=("Segoe UI", 10, "bold"),
+            fg="#F1F5F9",
+            bg="#161922",
+        ).pack(anchor="w", padx=16, pady=(14, 6))
+
+        entry = tk.Entry(
+            dlg,
+            bg="#232836",
+            fg="#F8FAFC",
+            insertbackground="#F8FAFC",
+            relief="flat",
+            font=("Segoe UI", 11),
+            highlightthickness=1,
+            highlightbackground="#58BCFF",
+        )
+        entry.pack(fill="x", padx=16, pady=(0, 10))
+        entry.focus_set()
+
+        def _submit(_e=None):
+            txt = entry.get().strip()
+            if txt:
+                self.hub.local_tasks.add_task(txt)
+            dlg.destroy()
+
+        entry.bind("<Return>", _submit)
+        dlg.bind("<Escape>", lambda _e: dlg.destroy())
+        tk.Button(
+            dlg,
+            text=self.i18n.t("tasks.add_btn"),
+            bg="#2563EB",
+            fg="white",
+            relief="flat",
+            padx=16,
+            pady=4,
+            font=("Segoe UI", 9, "bold"),
+            command=_submit,
+        ).pack(side="right", padx=16, pady=(0, 10))
+
+    def _run_quick_action(self, item: Dict[str, Any]) -> None:
+        action = str(item.get("action") or "").strip().lower()
+        if action == "starthub_settings":
+            self.open_settings_window()
+            return
+        if self.demo:
+            self.hub.show_toast(f"Demo action: {item.get('label', action)}")
+            return
+        if not IS_WINDOWS:
+            return
+        if action == "snip":
+            popen_on_default_desktop(["explorer.exe", "ms-screenclip:"])
+        elif action == "terminal":
+            popen_on_default_desktop(["cmd.exe", "/c", "start", "", "wt.exe"], no_window=True)
+        elif action == "lock":
+            try:
+                ctypes.windll.user32.LockWorkStation()
+            except Exception:
+                pass
+        elif action == "sleep":
+            popen_on_default_desktop(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"], no_window=True)
+        elif action == "explorer":
+            popen_on_default_desktop(["explorer.exe"])
+        elif action.startswith(("http://", "https://")):
+            popen_on_default_desktop(["cmd.exe", "/c", "start", "", action], no_window=True)
+        elif item.get("command"):
+            popen_on_default_desktop(["cmd.exe", "/c", str(item["command"])], no_window=True)
+
+    def _copy_diagnostics_report(self) -> None:
+        report = format_diagnostics(run_diagnostics(self.config_path))
+        copy_text_to_clipboard(report)
+        self.hub.show_toast(self.i18n.t("tray.diagnostics_copied"))
 
     def _rebuild_runtime(self) -> None:
         self.hub.stop()
         self.config = load_config(self.config_path, demo=self.demo, overrides=self._overrides)
         self.i18n = I18n(self.config["language"])
         self.theme = Theme.from_config(self.config)
+        self._apply_window_settings_from_config()
+        self._eff_lw = self.lw
+        self._eff_rw = self.rw
+        self.left_canvas.configure(width=self._eff_lw, height=self.wing_h)
+        self.right_canvas.configure(width=self._eff_rw, height=self.wing_h)
+
+        # Re-apply DWM blur toggle live on both wing HWNDs
+        if IS_WINDOWS:
+            for side in ("left", "right"):
+                try:
+                    apply_panel_blur(self._all_hwnds()[side], enabled=self.theme.blur)
+                except Exception:
+                    pass
+
+        self._setup_global_hotkey()
         self.renderer = HubRenderer(self.config, self.theme, self.i18n, self.fonts)
         self.hub = ProviderHub(
             self.config,
@@ -302,9 +500,13 @@ class StartHubApp:
         )
         self.hub.start()
         self._frame_cache.clear()
+        self._panel_geometry.clear()
+        self._last_start_rect = None
         self._left_scroll = self._right_scroll = 0
         self.tray.refresh(self.theme.accent)
         self._dirty = True
+        if self._visible and self._manual_hud_visible:
+            self._place_standalone_hud(show=True)
 
     def _toggle_demo_mode(self) -> None:
         self.demo = not self.demo
@@ -315,6 +517,8 @@ class StartHubApp:
         next_mode = "multi_accent" if self.theme.is_single_accent else "single_accent"
         self._overrides.setdefault("theme", {})["mode"] = next_mode
         self.config["theme"]["mode"] = next_mode
+        if not self.demo:
+            save_config_patch(self.config_path, {"theme": {"mode": next_mode}})
         self.theme = Theme.from_config(self.config)
         self.renderer.theme = self.theme
         self._frame_cache.clear()
@@ -322,24 +526,44 @@ class StartHubApp:
         self._dirty = True
 
     def _reload_config(self) -> None:
+        self._overrides.pop("theme", None)
         self._rebuild_runtime()
         self.hub.show_toast(self.i18n.t("tray.reloaded"))
 
     def _open_config_file(self) -> None:
         if not self.config_path.is_file():
-            example = REPO_ROOT / "config.example.json"
-            if example.is_file():
-                self.config_path.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
+            save_config_patch(self.config_path, {})
         if IS_WINDOWS and self.config_path.is_file():
             os.startfile(str(self.config_path))
 
     def _toggle_pause(self) -> None:
         self._paused = not self._paused
         if self._paused:
+            self._manual_hud_visible = False
             self._hide_windows()
         self.tray.refresh()
 
+    def _toggle_manual_hud(self) -> None:
+        if self.preview_mode:
+            return
+        if self._visible and self._manual_hud_visible:
+            self._manual_hud_visible = False
+            self._hide_windows()
+        else:
+            self._manual_hud_visible = True
+            self._last_interact_ts = time.time()
+            self._place_standalone_hud(show=True)
+            self._visible = True
+            self._active_source = "hotkey"
+            self._dirty = True
+
+    def _dismiss_panels(self) -> None:
+        self._manual_hud_visible = False
+        self._hide_windows()
+
     def quit(self) -> None:
+        if self._hotkey_listener is not None:
+            self._hotkey_listener.stop()
         try:
             self.tray.stop()
         except Exception:
@@ -351,6 +575,8 @@ class StartHubApp:
 
     def _on_destroy(self, event) -> None:
         if event.widget == self.root:
+            if self._hotkey_listener is not None:
+                self._hotkey_listener.stop()
             self.hub.stop()
             self.tray.stop()
             if self._center_registry_watch:
@@ -647,21 +873,28 @@ class StartHubApp:
                 prev = win32gui.GetWindow(prev, win32con.GW_HWNDPREV)
 
     # ------------------------------------------------------------------
-    # Window placement & lifecycle loop
+    # Multi-Trigger Start Menu Detection + Smooth Fade Animation
     # ------------------------------------------------------------------
 
-    def _find_start11_rect(self) -> Optional[Tuple[int, int, int, int]]:
-        if not IS_WINDOWS or win32gui is None or self._paused:
-            return None
-        hwnd = win32gui.FindWindow(self.start_menu_class, None)
-        if hwnd and win32gui.IsWindowVisible(hwnd):
-            try:
-                r = win32gui.GetWindowRect(hwnd)
-                if (r[2] - r[0]) > 200 and (r[3] - r[1]) > 200:
-                    return r
-            except Exception:
-                pass
-        return None
+    def _find_active_menu(self) -> Tuple[Optional[Tuple[int, int, int, int]], Optional[str]]:
+        if not IS_WINDOWS or win32gui is None or self._paused or self.trigger_mode == "hotkey":
+            return None, None
+        # 1) Stardock Start11 (DV2ControlHost)
+        if self.trigger_mode in ("auto", "start11"):
+            hwnd = win32gui.FindWindow(self.start_menu_class, None)
+            if hwnd and win32gui.IsWindowVisible(hwnd):
+                try:
+                    r = win32gui.GetWindowRect(hwnd)
+                    if (r[2] - r[0]) > 200 and (r[3] - r[1]) > 200:
+                        return r, "start11"
+                except Exception:
+                    pass
+        # 2) Native Windows 11 Start Menu (StartMenuExperienceHost.exe)
+        if self.trigger_mode in ("auto", "windows11"):
+            rect = find_native_win11_start_rect()
+            if rect is not None:
+                return rect, "windows11"
+        return None, None
 
     def _is_cursor_inside_wings(self) -> bool:
         if not IS_WINDOWS or win32gui is None:
@@ -679,55 +912,70 @@ class StartHubApp:
             pass
         return False
 
+    def _start_fade_in(self, sides: List[str]) -> None:
+        if not self.fade_animation or not IS_WINDOWS or not sides:
+            for side in sides:
+                self._surfaces[side].represent(255)
+            return
+        self._fade_generation += 1
+        gen = self._fade_generation
+        steps = max(4, min(14, self.fade_duration_ms // 12))
+        delay_ms = max(8, self.fade_duration_ms // steps)
+
+        def _step(idx: int) -> None:
+            if gen != self._fade_generation or not self._visible:
+                return
+            t = idx / float(steps)
+            eased = 1.0 - (1.0 - t) ** 3  # Cubic ease-out
+            alpha = max(25, min(255, int(round(eased * 255))))
+            for side in sides:
+                try:
+                    self._surfaces[side].represent(alpha)
+                except Exception:
+                    pass
+            if idx < steps:
+                self.root.after(delay_ms, lambda: _step(idx + 1))
+
+        _step(1)
+
     def _hide_windows(self) -> None:
         if self._visible and not self.preview_mode:
+            self._fade_generation += 1
             for win in self._all_windows().values():
                 win.withdraw()
             self._visible = False
+            self._active_source = None
             if self._bt_drawer_open:
                 self._bt_drawer_open = False
                 self._dirty = True
 
-    def _set_wing_height(self, height: int) -> bool:
-        height = int(height)
-        if self.wing_h == height:
-            return False
-        self.wing_h = height
-        self._left_scroll = self._right_scroll = 0
-        self._frame_cache.clear()
-        self.left_canvas.configure(height=height)
-        self.right_canvas.configure(height=height)
-        self._dirty = True
-        return True
-
-    def _place_panels(self, rect: Tuple[int, int, int, int], show: bool = False) -> None:
-        if IS_WINDOWS and win32api is not None:
-            mon = win32api.MonitorFromRect(rect, win32con.MONITOR_DEFAULTTONEAREST)
-            work = win32api.GetMonitorInfo(mon)["Work"]
-        else:
-            work = (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
-        snap = self.hub.snapshot()
-        has_left = self.renderer.has_widgets("left", snap)
-        has_right = self.renderer.has_widgets("right", snap)
-
-        layout = panel_layout(
-            rect,
-            work,
-            left_width=self.lw,
-            right_width=self.rw,
-            gap=self.gap,
-            has_left=has_left,
-            has_right=has_right,
-        )
+    def _sync_wing_dimensions(self, layout: Dict[str, Tuple[int, int, int, int]]) -> bool:
+        changed = False
         ref_panel = layout.get("left") or layout.get("right")
-        if ref_panel and self._set_wing_height(ref_panel[3]):
+        if ref_panel and self.wing_h != int(ref_panel[3]):
+            self.wing_h = int(ref_panel[3])
+            self.left_canvas.configure(height=self.wing_h)
+            self.right_canvas.configure(height=self.wing_h)
+            changed = True
+        if "left" in layout and self._eff_lw != int(layout["left"][2]):
+            self._eff_lw = int(layout["left"][2])
+            self.left_canvas.configure(width=self._eff_lw)
+            changed = True
+        if "right" in layout and self._eff_rw != int(layout["right"][2]):
+            self._eff_rw = int(layout["right"][2])
+            self.right_canvas.configure(width=self._eff_rw)
+            changed = True
+        if changed:
+            self._left_scroll = self._right_scroll = 0
+            self._frame_cache.clear()
+            self._dirty = True
+        return changed
+
+    def _present_layout(self, layout: Dict[str, Tuple[int, int, int, int]], show: bool = False) -> None:
+        if self._sync_wing_dimensions(layout):
             self._render_all()
 
-        if self.center_overlay and not self.preview_mode and self._center_safe(rect, work, force=show):
-            layout.update(center_layouts(rect, work, self._center_grid))
-        self._center_work = work
-
-        to_show = []
+        to_show: List[Tuple[str, int, int, int, int]] = []
         for side, win in self._all_windows().items():
             geom = layout.get(side)
             if geom is None:
@@ -748,6 +996,7 @@ class StartHubApp:
 
         if to_show:
             self.root.update_idletasks()
+            shown_sides: List[str] = []
             for side, x, y, w, h in to_show:
                 if IS_WINDOWS and win32gui is not None:
                     win32gui.SetWindowPos(
@@ -759,11 +1008,70 @@ class StartHubApp:
                         h,
                         win32con.SWP_NOACTIVATE | win32con.SWP_SHOWWINDOW,
                     )
-                self._surfaces[side].represent()
+                shown_sides.append(side)
+            self._start_fade_in(shown_sides)
+
+    def _place_standalone_hud(self, show: bool = False) -> None:
+        if IS_WINDOWS and win32api is not None:
+            pt = win32api.GetCursorPos()
+            mon = win32api.MonitorFromPoint(pt, win32con.MONITOR_DEFAULTTONEAREST)
+            work = win32api.GetMonitorInfo(mon)["Work"]
+        else:
+            work = (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+        self._center_overlay_active = False
+        snap = self.hub.snapshot()
+        has_left = self.renderer.has_widgets("left", snap, center_overlay_active=False)
+        has_right = self.renderer.has_widgets("right", snap, center_overlay_active=False)
+        layout = standalone_panel_layout(
+            work,
+            left_width=self.lw,
+            right_width=self.rw,
+            wing_height=self.wing_h,
+            gap=max(12, self.gap),
+            has_left=has_left,
+            has_right=has_right,
+            min_wing_width=self.min_wing_width,
+        )
+        self._present_layout(layout, show=show)
+
+    def _place_panels(self, rect: Tuple[int, int, int, int], show: bool = False, source: str = "start11") -> None:
+        if IS_WINDOWS and win32api is not None:
+            mon = win32api.MonitorFromRect(rect, win32con.MONITOR_DEFAULTTONEAREST)
+            work = win32api.GetMonitorInfo(mon)["Work"]
+        else:
+            work = (0, 0, self.root.winfo_screenwidth(), self.root.winfo_screenheight())
+
+        center_map: Dict[str, Tuple[int, int, int, int]] = {}
+        if source == "start11" and self.center_overlay and not self.preview_mode and self._center_safe(rect, work, force=show):
+            center_map = center_layouts(rect, work, self._center_grid)
+
+        prev_center_active = self._center_overlay_active
+        self._center_overlay_active = bool(center_map)
+        if prev_center_active != self._center_overlay_active:
+            self._dirty = True
+
+        snap = self.hub.snapshot()
+        has_left = self.renderer.has_widgets("left", snap, center_overlay_active=self._center_overlay_active)
+        has_right = self.renderer.has_widgets("right", snap, center_overlay_active=self._center_overlay_active)
+
+        layout = panel_layout(
+            rect,
+            work,
+            left_width=self.lw,
+            right_width=self.rw,
+            gap=self.gap,
+            has_left=has_left,
+            has_right=has_right,
+            adaptive_width=self.adaptive_width,
+            min_wing_width=self.min_wing_width,
+        )
+        if center_map:
+            layout.update(center_map)
+        self._center_work = work
+        self._present_layout(layout, show=show)
         self._last_start_rect = rect
 
     def _tick(self) -> None:
-        # Drain any queued tray/UI callbacks on the Tk thread
         with self._ui_lock:
             pending = list(self._pending_ui_actions)
             self._pending_ui_actions.clear()
@@ -774,18 +1082,20 @@ class StartHubApp:
                 logger.warning("UI callback error: %s", exc)
 
         just_shown = False
-        s_rect = self._find_start11_rect()
+        s_rect, source = self._find_active_menu()
         now = time.time()
 
-        if s_rect is not None:
-            if not self._visible:
-                self._place_panels(s_rect, show=True)
+        if s_rect is not None and source is not None:
+            self._manual_hud_visible = False
+            if not self._visible or self._active_source != source:
+                self._active_source = source
+                self._place_panels(s_rect, show=True, source=source)
                 self._visible = True
                 just_shown = True
                 self.root.after(30, self._refresh_visible_frame)
             elif s_rect != self._last_start_rect:
-                self._place_panels(s_rect)
-            elif self.center_overlay:
+                self._place_panels(s_rect, source=source)
+            elif source == "start11" and self.center_overlay:
                 safe = self._center_safe(s_rect, self._center_work)
                 desired = center_layouts(s_rect, self._center_work, self._center_grid) if safe else {}
                 if any(
@@ -793,13 +1103,13 @@ class StartHubApp:
                     or (side in desired and desired[side] != self._panel_geometry.get(side))
                     for side, win in self._center_windows.items()
                 ):
-                    self._place_panels(s_rect)
-            if self.center_overlay:
+                    self._place_panels(s_rect, source=source)
+            if source == "start11" and self.center_overlay:
                 self._keep_center_above_start11()
         else:
             for win in self._center_windows.values():
                 win.withdraw()
-            if not self.preview_mode and self._visible:
+            if not self.preview_mode and self._visible and not self._manual_hud_visible:
                 if not self._is_cursor_inside_wings() and (now - self._last_interact_ts) > self.hide_delay:
                     self._hide_windows()
 
@@ -813,7 +1123,7 @@ class StartHubApp:
         if self._visible and not just_shown:
             self._update_clock()
 
-        self.root.after(16 if self._visible else 10, self._tick)
+        self.root.after(16 if self._visible else self.idle_poll_ms, self._tick)
 
     def _refresh_visible_frame(self) -> None:
         if self._dirty:
@@ -850,6 +1160,13 @@ class StartHubApp:
             "toggle_bt_drawer": self._toggle_bt_drawer,
             "bt_toggle_radio": self.hub.peripherals.toggle_bt_radio if not self.demo else lambda: self.hub.show_toast("Demo: Bluetooth toggled"),
             "bt_open_settings": self.hub.peripherals.open_bt_settings,
+            "audio_mute": self.hub.toggle_demo_audio_mute,
+            "audio_volume": self.hub.set_demo_audio_volume,
+            "audio_output": self.hub.cycle_demo_audio_output,
+            "focus_toggle": lambda: self.hub.toggle_demo_focus("toggle"),
+            "focus_reset": lambda: self.hub.toggle_demo_focus("reset"),
+            "focus_phase": lambda: self.hub.toggle_demo_focus("switch_phase"),
+            "quick_action": self._run_quick_action,
             "media_command": self.hub.toggle_demo_media,
             "media_like": self.hub.toggle_demo_media_like,
             "hue_command": self.hub.toggle_demo_hue,
@@ -858,9 +1175,9 @@ class StartHubApp:
             "ecoflow_dc": lambda: self.hub.toggle_demo_ecoflow("toggle_dc12v"),
             "ecoflow_beep": lambda: self.hub.toggle_demo_ecoflow("toggle_beep"),
             "custom_open_url": self.hub.custom_json.open_url,
-            "todoist_cycle": self.hub.todoist.cycle_project if not self.demo else lambda: None,
+            "todoist_cycle": self.hub.cycle_tasks_project,
             "todoist_complete": self.hub.toggle_demo_todoist_complete,
-            "todoist_open": self.hub.todoist.open_app,
+            "todoist_open": self._open_add_task_dialog,
             "tile_cycle": self._cycle_tile_pack,
             "calendar_change_month": self._change_month,
             "calendar_today": self._calendar_today,
@@ -945,10 +1262,10 @@ class StartHubApp:
         actions = self._build_actions()
 
         for side, w, scroll, hover, canvas in (
-            ("left", self.lw, self._left_scroll, self._left_hover, self.left_canvas),
-            ("right", self.rw, self._right_scroll, self._right_hover, self.right_canvas),
+            ("left", self._eff_lw, self._left_scroll, self._left_hover, self.left_canvas),
+            ("right", self._eff_rw, self._right_scroll, self._right_hover, self.right_canvas),
         ):
-            if not self.renderer.has_widgets(side, snap):
+            if not self.renderer.has_widgets(side, snap, center_overlay_active=self._center_overlay_active):
                 continue
             im, spots, lay = self.renderer.render_wing(
                 side,
@@ -963,6 +1280,7 @@ class StartHubApp:
                 toast_message=toast,
                 tile_pack_label=self._tile_pack_label,
                 tile_busy=self._tile_busy,
+                center_overlay_active=self._center_overlay_active,
                 actions=actions,
             )
             if side == "left":

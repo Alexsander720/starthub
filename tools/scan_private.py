@@ -69,7 +69,7 @@ RULES: Dict[str, re.Pattern[str]] = {
 }
 
 APPROVED_DONATION_WALLET = "0xDC0c682922bF31946937" + "74743fBB3fd20E7754c3"
-APPROVED_DONATION_PATHS = {"README.md"}
+APPROVED_DONATION_PATHS = {"README.md", "README.uk.md", "README.ru.md"}
 APPROVED_DOC_LAN_PATHS = {"docs/WIDGETS.md", "docs/SETUP.md", "tests/test_providers.py"}
 
 

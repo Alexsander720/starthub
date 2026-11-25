@@ -66,7 +66,7 @@ def test_validation_clamps_invalid_values(tmp_path: Path):
     assert cfg["theme"]["accent_color"] == "#58BCFF"
     assert cfg["theme"]["panel_alpha"] == 255
     assert cfg["theme"]["corner_radius"] == 0
-    assert cfg["window"]["left_width"] == 340
+    assert cfg["window"]["left_width"] == 300
     assert cfg["window"]["right_width"] == 560
     assert cfg["window"]["hide_delay_sec"] == 5.0
 

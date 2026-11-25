@@ -66,22 +66,33 @@ def _draw_media_button(
 
 
 def _draw_vector_album_art(ctx: RenderContext, x: int, y: int, size: int) -> None:
-    """Clean vinyl/waveform vector artwork fallback when SMTC thumbnail is absent."""
+    """Rich synthwave-inspired geometric artwork fallback when SMTC thumbnail is absent."""
     S = ctx.scale
     accent = ctx.theme.role("media")
-    bg = ctx.theme.tint_dark(accent, 0.28)
+    sec = ctx.theme.role("primary")
+    bg = ctx.theme.tint_dark(accent, 0.34)
     ctx.draw.rounded_rectangle(
         (x * S, y * S, (x + size) * S, (y + size) * S),
         radius=10 * S,
         fill=bg,
-        outline=(*accent, 180),
+        outline=(*accent, 190),
         width=S,
     )
-    cx, cy = (x + size // 2) * S, (y + size // 2) * S
-    r_out = int(size * 0.34 * S)
-    r_in = int(size * 0.12 * S)
-    ctx.draw.ellipse((cx - r_out, cy - r_out, cx + r_out, cy + r_out), outline=(*accent, 230), width=2 * S)
-    ctx.draw.ellipse((cx - r_in, cy - r_in, cx + r_in, cy + r_in), fill=(*accent, 255))
+    # Stylized horizon sun + minimal equalizer bars
+    cx, cy = (x + size // 2) * S, (y + int(size * 0.44)) * S
+    r = int(size * 0.26 * S)
+    ctx.draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(*sec, 170), outline=(*accent, 240), width=max(1, S))
+    # Subtle equalizer wave bars along bottom
+    bars = (0.30, 0.62, 0.45, 0.78, 0.52, 0.36)
+    bw = 3 * S
+    gap = 3 * S
+    total_bw = len(bars) * bw + (len(bars) - 1) * gap
+    bx0 = (x + size // 2) * S - total_bw // 2
+    base_y = (y + size - 7) * S
+    for i, frac in enumerate(bars):
+        bh = int(14 * S * frac)
+        bx = bx0 + i * (bw + gap)
+        ctx.draw.rounded_rectangle((bx, base_y - bh, bx + bw, base_y), radius=S, fill=(*accent, 245))
 
 
 def draw_media_card(
@@ -147,19 +158,38 @@ def draw_media_card(
     else:
         _draw_vector_album_art(ctx, x1 + 14, y1 + 12, 52)
 
-    text_max_w = x2 - x1 - 92
+    source_name = str(state.get("source_name") or "")
+    badge_w = 0
+    if source_name:
+        f_src = ctx.font(11, "bold")
+        sw = int(round(ctx.draw.textlength(source_name, font=f_src) / S))
+        badge_w = sw + 18
+        sx2 = x2 - 12
+        sx1 = sx2 - (sw + 12)
+        sy1, sy2 = y1 + 12, y1 + 30
+        m_acc = ctx.theme.role("media")
+        ctx.draw.rounded_rectangle(
+            (sx1 * S, sy1 * S, sx2 * S, sy2 * S),
+            radius=6 * S,
+            fill=ctx.theme.tint_dark(m_acc, 0.24),
+            outline=(*m_acc, 180),
+            width=S,
+        )
+        ctx.draw.text(((sx1 + 6) * S, (sy1 + 2) * S), source_name, font=f_src, fill=(*m_acc, 255))
+
+    text_max_w = x2 - x1 - 92 - badge_w
     title = state.get("title") or ctx.i18n.t("media.unknown_track")
     artist = state.get("artist") or ""
     ctx.draw.text(
         ((x1 + 78) * S, (y1 + 11) * S),
-        ctx.fit_text(title, text_max_w, 18, "semibold"),
-        font=ctx.font(18, "semibold"),
+        ctx.fit_text(title, text_max_w, 17, "semibold"),
+        font=ctx.font(17, "semibold"),
         fill=ctx.theme.text_primary,
     )
     ctx.draw.text(
-        ((x1 + 78) * S, (y1 + 37) * S),
-        ctx.fit_text(artist, text_max_w, 14, "regular"),
-        font=ctx.font(14, "regular"),
+        ((x1 + 78) * S, (y1 + 36) * S),
+        ctx.fit_text(artist, x2 - x1 - 92, 13, "regular"),
+        font=ctx.font(13, "regular"),
         fill=ctx.theme.text_secondary,
     )
 

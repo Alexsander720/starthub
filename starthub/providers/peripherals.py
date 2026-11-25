@@ -1,6 +1,16 @@
-"""Peripherals battery & Windows Bluetooth drawer provider (Tier 1)."""
+"""Universal peripherals battery & Windows Bluetooth drawer provider (Tier 1).
+
+Supports:
+- Windows Bluetooth / BLE PnP battery level (AirPods, Sony WH-1000, MX Master BT, Keychron BT, etc.)
+- Xbox / XInput controllers (via native xinput1_4.dll, zero external dependencies)
+- DualSense controllers (DSX UDP or HID)
+- Logitech HID++ 2.0 mice & keyboards across Unifying, Logi Bolt, and Lightspeed receivers
+- ASUS ROG wireless mice HID
+- Optional handheld JSON battery file
+"""
 from __future__ import annotations
 
+import ctypes
 import json
 import logging
 import os
@@ -17,9 +27,46 @@ from ..surface import CREATE_NO_WINDOW, IS_WINDOWS, popen_on_default_desktop
 
 logger = logging.getLogger("starthub.providers.peripherals")
 
+# Logitech Unifying, Logi Bolt, and Lightspeed USB receiver PIDs
+_LOGITECH_RECEIVER_PIDS = (0xC52B, 0xC548, 0xC539, 0xC547, 0xC54D)
+
+
+class _XInputBatteryInfo(ctypes.Structure):
+    _fields_ = [("BatteryType", ctypes.c_ubyte), ("BatteryLevel", ctypes.c_ubyte)]
+
+
+def read_xinput_gamepad_battery() -> Optional[Dict[str, Any]]:
+    """Query connected Xbox / XInput controller battery via native xinput1_4.dll (zero deps)."""
+    if not IS_WINDOWS:
+        return None
+    xinp = None
+    for dll in ("xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll"):
+        try:
+            xinp = ctypes.WinDLL(dll)
+            if hasattr(xinp, "XInputGetBatteryInformation"):
+                break
+            xinp = None
+        except OSError:
+            continue
+    if xinp is None:
+        return None
+    # BATTERY_DEVTYPE_GAMEPAD = 0; BATTERY_TYPE_DISCONNECTED = 0, WIRED = 1
+    level_map = {0: 10, 1: 30, 2: 65, 3: 100}
+    for idx in range(4):
+        info = _XInputBatteryInfo()
+        try:
+            res = xinp.XInputGetBatteryInformation(idx, 0, ctypes.byref(info))
+        except Exception:
+            break
+        if res == 0 and info.BatteryType != 0:
+            wired = info.BatteryType == 1
+            batt = 100 if wired else level_map.get(int(info.BatteryLevel), 65)
+            return {"name": "Xbox Controller", "battery": batt, "charging": wired, "online": True}
+    return None
+
 
 class PeripheralsProvider:
-    """Reads wireless mouse, Logitech HID++ keyboard, DualSense (DSX UDP / HID), optional handheld JSON, and Bluetooth."""
+    """Reads wireless peripherals battery (HID, XInput, Windows BT/BLE PnP) and Bluetooth devices."""
 
     def __init__(
         self,
@@ -55,16 +102,16 @@ class PeripheralsProvider:
                 "gamepad": dict(self._state["gamepad"]),
                 "handheld": dict(self._state["handheld"]),
                 "bt_on": self._state["bt_on"],
-                "bt_devices": list(self._state["bt_devices"]),
+                "bt_devices": [dict(d) for d in self._state["bt_devices"]],
             }
 
     def start(self) -> None:
         if not self.config.get("enabled", True):
             return
         threading.Thread(target=self._main_loop, name="starthub-peripherals", daemon=True).start()
-        if self.config.get("show_keyboard", True):
-            threading.Thread(target=self._keyboard_loop, name="starthub-keyboard", daemon=True).start()
-        if self.config.get("show_bluetooth", True):
+        if self.config.get("show_keyboard", True) or self.config.get("show_mouse", True):
+            threading.Thread(target=self._logitech_loop, name="starthub-logitech", daemon=True).start()
+        if self.config.get("show_bluetooth", True) or self.config.get("show_bt_batteries", True):
             threading.Thread(target=self._bt_loop, name="starthub-bluetooth", daemon=True).start()
 
     def stop(self) -> None:
@@ -83,15 +130,25 @@ class PeripheralsProvider:
             if self._stopped.wait(12.0):
                 break
 
-    def _keyboard_loop(self) -> None:
+    def _logitech_loop(self) -> None:
         while not self._stopped.is_set():
-            value = self.read_logitech_keyboard_battery(default_name=self.i18n.t("peripherals.keyboard"))
+            found = self.read_logitech_hidpp_devices(
+                default_kb=self.i18n.t("peripherals.keyboard"),
+                default_mouse=self.i18n.t("peripherals.mouse"),
+            )
+            changed = False
             with self._lock:
-                changed = self._state["keyboard"] != value
-                self._state["keyboard"] = value
+                if found.get("keyboard") is not None:
+                    if self._state["keyboard"] != found["keyboard"]:
+                        self._state["keyboard"] = found["keyboard"]
+                        changed = True
+                if found.get("mouse") is not None and found["mouse"].get("online"):
+                    if self._state["mouse"] != found["mouse"]:
+                        self._state["mouse"] = found["mouse"]
+                        changed = True
             if changed:
                 self._notify()
-            if self._stopped.wait(60.0):
+            if self._stopped.wait(45.0):
                 break
 
     def _bt_loop(self) -> None:
@@ -166,7 +223,17 @@ class PeripheralsProvider:
         if self.config.get("dsx_udp_enabled", False):
             updated = self._poll_dualsense_dsx()
         if not updated:
-            self._poll_dualsense_hid()
+            updated = self._poll_dualsense_hid()
+        if not updated:
+            # Universal Xbox / XInput fallback (zero extra dependencies)
+            xinfo = read_xinput_gamepad_battery()
+            if xinfo is not None:
+                with self._lock:
+                    self._state["gamepad"] = xinfo
+            else:
+                with self._lock:
+                    if not self._state["gamepad"].get("bt_fallback"):
+                        self._state["gamepad"]["online"] = False
 
     def _poll_dualsense_dsx(self) -> bool:
         try:
@@ -202,25 +269,19 @@ class PeripheralsProvider:
                             "online": True,
                         }
                     return True
-                if not is_conn:
-                    with self._lock:
-                        self._state["gamepad"]["online"] = False
-                    return True
             finally:
                 sock.close()
         except Exception:
             pass
         return False
 
-    def _poll_dualsense_hid(self) -> None:
+    def _poll_dualsense_hid(self) -> bool:
         try:
             import hid
 
             ds_list = [d for d in hid.enumerate(0x054C) if d.get("product_id") in (0x0CE6, 0x0DF2)]
             if not ds_list:
-                with self._lock:
-                    self._state["gamepad"]["online"] = False
-                return
+                return False
             h = hid.device()
             h.open_path(ds_list[0]["path"])
             try:
@@ -247,20 +308,26 @@ class PeripheralsProvider:
                     "charging": charging,
                     "online": True,
                 }
+            return True
         except Exception:
-            pass
+            return False
 
     @staticmethod
-    def read_logitech_keyboard_battery(default_name: str = "Keyboard") -> Dict[str, Any]:
-        """Read-only HID++ 2.0 battery query on Logitech Unifying vendor collections."""
-        unknown: Dict[str, Any] = {"name": default_name, "battery": None, "online": False}
+    def read_logitech_hidpp_devices(
+        default_kb: str = "Keyboard",
+        default_mouse: str = "Mouse",
+    ) -> Dict[str, Optional[Dict[str, Any]]]:
+        """Read-only HID++ 2.0 battery query across Logitech Unifying, Bolt, and Lightspeed receivers."""
+        found_kb: Optional[Dict[str, Any]] = None
+        found_mouse: Optional[Dict[str, Any]] = None
         handles: List[Any] = []
         try:
             import hid
 
             devices = [
                 d
-                for d in hid.enumerate(0x046D, 0xC52B)
+                for pid in _LOGITECH_RECEIVER_PIDS
+                for d in hid.enumerate(0x046D, pid)
                 if d.get("usage_page") == 0xFF00 and d.get("usage") in (1, 2)
             ]
             for long_dev in (d for d in devices if d["usage"] == 2):
@@ -287,7 +354,7 @@ class PeripheralsProvider:
                         payload = [0x10, slot, feature, cmd, *params]
                         payload += [0] * (7 - len(payload))
                         writer.write(payload)
-                        deadline = time.monotonic() + 0.9
+                        deadline = time.monotonic() + 0.65
                         while time.monotonic() < deadline:
                             for reader in handles:
                                 reply = reader.read(64)
@@ -312,8 +379,9 @@ class PeripheralsProvider:
                         if not name_idx:
                             continue
                         kind = request(slot, name_idx, 0x20)
-                        if not kind or kind[0] != 0:
+                        if not kind or kind[0] not in (0, 3):  # 0=Keyboard, 3=Mouse
                             continue
+                        dev_kind = "keyboard" if kind[0] == 0 else "mouse"
                         name_bytes = b""
                         length = request(slot, name_idx)
                         if length:
@@ -322,19 +390,23 @@ class PeripheralsProvider:
                                 if not part:
                                     break
                                 name_bytes += bytes(part[: length[0] - len(name_bytes)])
-                        found = {
-                            "name": name_bytes.decode("utf-8", errors="replace") or "Logitech",
-                            "battery": None,
-                            "online": True,
-                        }
+                        dev_name = name_bytes.decode("utf-8", errors="replace") or (
+                            default_kb if dev_kind == "keyboard" else default_mouse
+                        )
+                        batt_val: Optional[int] = None
                         for feat, func in ((0x1004, 0x10), (0x1000, 0)):
                             idx = feature_index(slot, feat)
                             if not idx:
                                 continue
                             batt = request(slot, idx, func)
                             if batt and 0 < batt[0] <= 100:
-                                return {**found, "battery": int(batt[0])}
-                        return found
+                                batt_val = int(batt[0])
+                                break
+                        entry = {"name": dev_name, "battery": batt_val, "online": True}
+                        if dev_kind == "keyboard" and found_kb is None:
+                            found_kb = entry
+                        elif dev_kind == "mouse" and found_mouse is None:
+                            found_mouse = {**entry, "charging": False}
                 finally:
                     for h in handles:
                         h.close()
@@ -347,7 +419,13 @@ class PeripheralsProvider:
                     h.close()
                 except Exception:
                     pass
-        return unknown
+        return {"keyboard": found_kb, "mouse": found_mouse}
+
+    @staticmethod
+    def read_logitech_keyboard_battery(default_name: str = "Keyboard") -> Dict[str, Any]:
+        """Backwards-compatible helper returning keyboard battery dictionary."""
+        res = PeripheralsProvider.read_logitech_hidpp_devices(default_kb=default_name)
+        return res.get("keyboard") or {"name": default_name, "battery": None, "online": False}
 
     def refresh_gamepad_now(self) -> None:
         def _worker():
@@ -362,26 +440,59 @@ class PeripheralsProvider:
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    def _apply_bt_battery_fallbacks(self, devices: List[Dict[str, Any]]) -> None:
+        """Populate mouse/keyboard/gamepad slots from Windows Bluetooth PnP battery when HID dongle is absent."""
+        if not self.config.get("show_bt_batteries", True):
+            return
+        with self._lock:
+            for dev in devices:
+                if not dev.get("connected") or dev.get("battery") is None:
+                    continue
+                low = str(dev.get("name") or "").lower()
+                batt = int(dev["battery"])
+                if any(k in low for k in ("mouse", "mx master", "mx anywhere", "deathadder", "basilisk", "g pro", "viper")):
+                    if not self._state["mouse"].get("online"):
+                        self._state["mouse"] = {"name": dev["name"], "battery": batt, "charging": False, "online": True}
+                elif any(k in low for k in ("keyboard", "keychron", "mx keys", "craft", "nuphy", "anne pro", "kbd")):
+                    if not self._state["keyboard"].get("online"):
+                        self._state["keyboard"] = {"name": dev["name"], "battery": batt, "online": True}
+                elif any(k in low for k in ("xbox", "dualsense", "wireless controller", "gamepad", "8bitdo", "pro controller")):
+                    if not self._state["gamepad"].get("online"):
+                        self._state["gamepad"] = {
+                            "name": dev["name"],
+                            "battery": batt,
+                            "charging": False,
+                            "online": True,
+                            "bt_fallback": True,
+                        }
+
     def refresh_bluetooth(self) -> None:
         if not IS_WINDOWS:
             return
         try:
             ps = (
-                "$bth = Get-PnpDevice -Class Bluetooth | Where-Object { $_.InstanceId -match '^BTHENUM\\\\DEV_|^BTHLE\\\\DEV_' }; "
+                "$bth = Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match '^BTHENUM\\\\DEV_|^BTHLE\\\\DEV_|^BTHLEDEVICE\\\\' }; "
                 "$seen = @{}; "
                 "foreach ($d in $bth) { "
                 "  $n = $d.FriendlyName; "
-                "  if (-not $n -or $n -match 'Generic|Enumerator|Service|Avrcp|Transport') { continue }; "
+                "  if (-not $n -or $n -match 'Generic|Enumerator|Service|Avrcp|Transport|RFCOMM|Protocol') { continue }; "
                 "  $p = Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName '{83da6326-97a6-4088-9453-a1923f573b29} 15' -ErrorAction SilentlyContinue; "
                 "  $c = if ($p) { [bool]$p.Data } else { $false }; "
-                "  if (-not $seen.ContainsKey($n) -or $c) { $seen[$n] = @{ name=$n; connected=$c; id=$d.InstanceId } } "
+                "  $bp = Get-PnpDeviceProperty -InstanceId $d.InstanceId -KeyName '{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2' -ErrorAction SilentlyContinue; "
+                "  $b = if ($bp -and $null -ne $bp.Data) { [int]$bp.Data } else { $null }; "
+                "  if (-not $seen.ContainsKey($n)) { "
+                "    $seen[$n] = @{ name=$n; connected=$c; battery=$b; id=$d.InstanceId } "
+                "  } else { "
+                "    if ($c) { $seen[$n].connected = $true }; "
+                "    if ($null -ne $b) { $seen[$n].battery = $b } "
+                "  } "
                 "}; "
                 "$seen.Values | ConvertTo-Json -Compress"
             )
             out = subprocess.check_output(
                 ["powershell.exe", "-NoProfile", "-Command", ps],
                 text=True,
-                timeout=5.0,
+                timeout=6.0,
                 creationflags=CREATE_NO_WINDOW,
                 encoding="utf-8",
                 errors="ignore",
@@ -390,8 +501,10 @@ class PeripheralsProvider:
                 parsed = json.loads(out)
                 if isinstance(parsed, dict):
                     parsed = [parsed]
+                parsed.sort(key=lambda x: (not bool(x.get("connected")), x.get("battery") is None, str(x.get("name", "")).lower()))
                 with self._lock:
                     self._state["bt_devices"] = parsed
+                self._apply_bt_battery_fallbacks(parsed)
                 self._notify()
         except Exception:
             pass

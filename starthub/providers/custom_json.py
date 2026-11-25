@@ -1,7 +1,7 @@
-"""Universal Custom JSON metrics provider (Tier 2, opt-in).
+"""Universal Custom JSON metrics provider supporting 'columns', 'hero', and 'list' layouts (Tier 2).
 
 Reads any local JSON file or localhost HTTP endpoint (e.g. Home Assistant, Pi-hole,
-AI quota tracker, custom scripts) and exposes up to 3 structured metrics per card.
+Ollama, crypto/FX trackers, AI quotas, custom scripts).
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from ..surface import IS_WINDOWS, popen_on_default_desktop
 logger = logging.getLogger("starthub.providers.custom_json")
 
 LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
+VALID_LAYOUTS = ("columns", "hero", "list")
 
 
 def is_allowed_source_url(url: str, allow_remote: bool = False) -> bool:
@@ -37,6 +38,9 @@ def normalize_custom_card(card_cfg: Dict[str, Any], payload: Any) -> Dict[str, A
     fallback_title = str(card_cfg.get("title") or "Custom Metrics")
     card_id = str(card_cfg.get("id") or fallback_title.lower().replace(" ", "_"))
     click_url = str(card_cfg.get("click_url") or "")
+    cfg_layout = str(card_cfg.get("layout") or "columns").strip().lower()
+    if cfg_layout not in VALID_LAYOUTS:
+        cfg_layout = "columns"
 
     if not isinstance(payload, dict):
         return {
@@ -45,9 +49,17 @@ def normalize_custom_card(card_cfg: Dict[str, Any], payload: Any) -> Dict[str, A
             "badge": "",
             "subtitle": "",
             "url": click_url,
+            "layout": cfg_layout,
             "ok": False,
             "metrics": [],
+            "hero_value": "",
+            "hero_sub": "",
+            "hero_status": "info",
+            "items": [],
         }
+
+    raw_layout = str(payload.get("layout") or cfg_layout).strip().lower()
+    layout = raw_layout if raw_layout in VALID_LAYOUTS else cfg_layout
 
     raw_metrics = payload.get("metrics") or []
     metrics: List[Dict[str, Any]] = []
@@ -71,14 +83,33 @@ def normalize_custom_card(card_cfg: Dict[str, Any], payload: Any) -> Dict[str, A
                 }
             )
 
+    raw_items = payload.get("items") or []
+    items: List[Dict[str, Any]] = []
+    if isinstance(raw_items, list):
+        for it in raw_items[:5]:
+            if not isinstance(it, dict):
+                continue
+            items.append(
+                {
+                    "label": str(it.get("label") or ""),
+                    "value": str(it.get("value") if it.get("value") is not None else "—"),
+                    "status": str(it.get("status") or "info").lower(),
+                }
+            )
+
     return {
         "id": card_id,
         "title": str(payload.get("title") or fallback_title),
         "badge": str(payload.get("badge") or ""),
         "subtitle": str(payload.get("subtitle") or ""),
         "url": str(payload.get("url") or click_url),
+        "layout": layout,
         "ok": True,
         "metrics": metrics,
+        "hero_value": str(payload.get("hero_value") or ""),
+        "hero_sub": str(payload.get("hero_sub") or ""),
+        "hero_status": str(payload.get("hero_status") or "info").lower(),
+        "items": items,
     }
 
 
@@ -113,6 +144,7 @@ class CustomJsonProvider:
                 if cid in self._cards:
                     card = dict(self._cards[cid])
                     card["metrics"] = [dict(m) for m in card.get("metrics", [])]
+                    card["items"] = [dict(i) for i in card.get("items", [])]
                     out.append(card)
             return out
 

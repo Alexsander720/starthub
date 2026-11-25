@@ -20,6 +20,35 @@ from .spotify_like import LikeState, SpotifyClient
 logger = logging.getLogger("starthub.providers.media")
 
 
+def friendly_media_source(app_id: str) -> str:
+    low = str(app_id or "").lower()
+    if "spotify" in low:
+        return "Spotify"
+    if "ytmusic" in low or "youtube" in low:
+        return "YouTube"
+    if "tidal" in low:
+        return "Tidal"
+    if "apple" in low or "itunes" in low:
+        return "Apple Music"
+    if "vlc" in low:
+        return "VLC"
+    if "foobar" in low:
+        return "foobar2000"
+    if "chrome" in low:
+        return "Chrome"
+    if "msedge" in low or "edge" in low:
+        return "Edge"
+    if "firefox" in low:
+        return "Firefox"
+    if "opera" in low:
+        return "Opera"
+    if "brave" in low:
+        return "Brave"
+    if "music" in low:
+        return "Music"
+    return ""
+
+
 class MediaProvider:
     """Visibility-gated Windows SMTC reader + playback transport + optional Spotify Like."""
 
@@ -65,6 +94,7 @@ class MediaProvider:
             "title": "",
             "artist": "",
             "app_id": "",
+            "source_name": "",
             "is_spotify": False,
             "position": 0.0,
             "duration": 0.0,
@@ -182,6 +212,7 @@ class MediaProvider:
             "title": "",
             "artist": "",
             "app_id": "",
+            "source_name": "",
             "is_spotify": False,
             "position": 0.0,
             "duration": 0.0,
@@ -214,6 +245,7 @@ class MediaProvider:
                 title=props.title or "",
                 artist=props.artist or "",
                 app_id=app_id,
+                source_name=friendly_media_source(app_id),
                 is_spotify=is_spotify,
                 position=min(duration, position) if duration else 0.0,
                 duration=duration,

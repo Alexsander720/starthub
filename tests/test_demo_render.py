@@ -61,10 +61,21 @@ def test_tier1_zero_key_default_layout_renders_cleanly():
 
     assert renderer.has_widgets("left", snap) is True
     assert renderer.has_widgets("right", snap) is True
-    im_l, _, lay_l = renderer.render_wing("left", 416, 774, snap, now=fixed_now)
-    im_r, _, lay_r = renderer.render_wing("right", 430, 774, snap, now=fixed_now)
-    assert [s.key for s in lay_l.slots] == ["peripherals", "media_player", "system_monitor"]
-    assert [s.key for s in lay_r.slots] == ["weather_card", "calendar_card"]
+    im_l, _, lay_l = renderer.render_wing("left", 416, 774, snap, now=fixed_now, center_overlay_active=True)
+    im_r, _, lay_r = renderer.render_wing("right", 430, 774, snap, now=fixed_now, center_overlay_active=True)
+    assert [s.key for s in lay_l.slots] == [
+        "peripherals",
+        "audio_control",
+        "media_player",
+        "system_monitor",
+        "storage_network",
+        "focus_timer",
+        "quick_actions",
+    ]
+    assert [s.key for s in lay_r.slots] == ["tasks", "calendar_card"]
+    # When Start11 center overlay is inactive (e.g. native Win11 Start or Hotkey), weather_card auto-shows
+    _, _, lay_r_noc = renderer.render_wing("right", 430, 774, snap, now=fixed_now, center_overlay_active=False)
+    assert [s.key for s in lay_r_noc.slots] == ["weather_card", "tasks", "calendar_card"]
     assert im_l.size == (416, 774)
     assert im_r.size == (430, 774)
 

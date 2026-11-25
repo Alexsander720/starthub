@@ -16,12 +16,16 @@ from .layout import CENTER_H, CENTER_SIDES, CENTER_W, CardSpec, WingLayout, comp
 from .surface import FontBank
 from .theme import Theme
 from .widgets import Hotspot, RenderContext, draw_toast, finish_panel_image
+from .widgets.audio import draw_audio_card
 from .widgets.custom_json import draw_custom_json_card
 from .widgets.ecoflow import draw_ecoflow_card
+from .widgets.focus_timer import draw_focus_card
 from .widgets.hue import draw_hue_card
 from .widgets.media import draw_media_card
 from .widgets.peripherals import draw_bt_drawer, draw_peripherals_card
 from .widgets.phone_adb import draw_phone_card, draw_photos_card, draw_sms_bar_or_drawer
+from .widgets.quick_actions import draw_quick_actions_card, draw_tile_switcher_bar
+from .widgets.storage_network import draw_storage_network_card
 from .widgets.system_monitor import draw_system_monitor
 from .widgets.todoist import draw_todoist_card
 from .widgets.weather_clock import draw_calendar_card, draw_weather_card, render_center_part
@@ -43,19 +47,28 @@ class HubRenderer:
         self.fonts = fonts or FontBank()
         self.img_cache: Dict[Any, Any] = {}
 
-    def build_wing_specs(self, side: str, snapshot: Dict[str, Any]) -> List[CardSpec]:
+    def build_wing_specs(
+        self,
+        side: str,
+        snapshot: Dict[str, Any],
+        *,
+        center_overlay_active: bool = False,
+    ) -> List[CardSpec]:
         layout_cfg = self.config.get("layout", {})
         widget_ids = list(layout_cfg.get(f"{side}_widgets") or [])
-        widgets_cfg = self.config.get("widgets", {})
         specs: List[CardSpec] = []
 
         phone_state = snapshot.get("phone") or {}
         photos_expanded = bool(phone_state.get("photos_expanded", False))
         media_state = snapshot.get("media") or {}
         media_playing = bool(media_state.get("playing", False))
+        has_tasks_in_wing = any(
+            w in ("tasks", "todoist") and is_widget_enabled(self.config, w, center_overlay_active=center_overlay_active)
+            for w in widget_ids
+        )
 
         for wid in widget_ids:
-            if not is_widget_enabled(self.config, wid):
+            if not is_widget_enabled(self.config, wid, center_overlay_active=center_overlay_active):
                 continue
             if wid == "phone_adb":
                 specs.append(CardSpec("phone_adb", min_height=170, preferred_height=176, expandable=False))
@@ -68,6 +81,10 @@ class HubRenderer:
                     specs.append(CardSpec("phone_sms", min_height=54, preferred_height=54, pinned_bottom=True))
             elif wid == "peripherals":
                 specs.append(CardSpec("peripherals", min_height=98, preferred_height=104, expandable=False))
+            elif wid == "audio_control":
+                if photos_expanded and side == "left":
+                    continue
+                specs.append(CardSpec("audio_control", min_height=76, preferred_height=82, expandable=False))
             elif wid == "media_player":
                 if photos_expanded and side == "left":
                     continue
@@ -76,7 +93,11 @@ class HubRenderer:
             elif wid == "system_monitor":
                 if photos_expanded and side == "left":
                     continue
-                specs.append(CardSpec("system_monitor", min_height=78, preferred_height=82, expandable=False))
+                specs.append(CardSpec("system_monitor", min_height=78, preferred_height=84, expandable=False))
+            elif wid == "storage_network":
+                if photos_expanded and side == "left":
+                    continue
+                specs.append(CardSpec("storage_network", min_height=82, preferred_height=88, expandable=False))
             elif wid == "philips_hue":
                 if photos_expanded and side == "left":
                     continue
@@ -88,16 +109,24 @@ class HubRenderer:
                 for idx, card in enumerate(cards):
                     cid = str(card.get("id") or idx)
                     specs.append(CardSpec(f"custom_json:{cid}", min_height=138, preferred_height=144, expandable=False))
-            elif wid == "todoist":
-                specs.append(CardSpec("todoist", min_height=168, preferred_height=210, expandable=True))
+            elif wid in ("tasks", "todoist"):
+                specs.append(CardSpec("tasks", min_height=158, preferred_height=196, expandable=True))
+            elif wid == "focus_timer":
+                specs.append(CardSpec("focus_timer", min_height=64, preferred_height=68, expandable=False))
             elif wid == "weather_card":
-                specs.append(CardSpec("weather_card", min_height=140, preferred_height=275, expandable=True, max_height=310))
+                specs.append(CardSpec("weather_card", min_height=140, preferred_height=255, expandable=True, max_height=290))
             elif wid == "calendar_card":
-                specs.append(CardSpec("calendar_card", min_height=250, preferred_height=315, expandable=True, max_height=360))
+                specs.append(CardSpec("calendar_card", min_height=236, preferred_height=288, expandable=True, max_height=340))
+            elif wid == "quick_actions":
+                specs.append(CardSpec("quick_actions", min_height=64, preferred_height=68, expandable=False))
+            elif wid == "tile_switcher":
+                # Only render standalone bar when Tasks/Todoist isn't already hosting the Tile Switcher pill
+                if not has_tasks_in_wing:
+                    specs.append(CardSpec("tile_switcher", min_height=48, preferred_height=50, expandable=False))
         return specs
 
-    def has_widgets(self, side: str, snapshot: Dict[str, Any]) -> bool:
-        return len(self.build_wing_specs(side, snapshot)) > 0
+    def has_widgets(self, side: str, snapshot: Dict[str, Any], *, center_overlay_active: bool = False) -> bool:
+        return len(self.build_wing_specs(side, snapshot, center_overlay_active=center_overlay_active)) > 0
 
     def render_wing(
         self,
@@ -114,6 +143,7 @@ class HubRenderer:
         toast_message: str = "",
         tile_pack_label: Optional[str] = None,
         tile_busy: bool = False,
+        center_overlay_active: bool = False,
         actions: Optional[Dict[str, Callable[..., None]]] = None,
     ) -> Tuple[Image.Image, List[Hotspot], WingLayout]:
         S = self.SCALE
@@ -121,7 +151,7 @@ class HubRenderer:
         cal_month = calendar_month or (ref_now.year, ref_now.month)
         acts = actions or {}
 
-        specs = self.build_wing_specs(side, snapshot)
+        specs = self.build_wing_specs(side, snapshot, center_overlay_active=center_overlay_active)
         wing_layout = compute_wing_stack(specs, width, height, margin=12, gap=8)
 
         # Render normal scrollable area
@@ -177,6 +207,15 @@ class HubRenderer:
                     on_refresh_gamepad=acts.get("refresh_gamepad", _noop),
                     on_toggle_bt_drawer=acts.get("toggle_bt_drawer", _noop),
                 )
+            elif k == "audio_control":
+                draw_audio_card(
+                    ctx,
+                    box,
+                    snapshot.get("audio") or {},
+                    on_toggle_mute=acts.get("audio_mute", _noop),
+                    on_set_volume=acts.get("audio_volume", _noop),
+                    on_cycle_output=acts.get("audio_output", _noop),
+                )
             elif k == "media_player":
                 draw_media_card(
                     ctx,
@@ -187,6 +226,8 @@ class HubRenderer:
                 )
             elif k == "system_monitor":
                 draw_system_monitor(ctx, box, snapshot.get("monitor") or {})
+            elif k == "storage_network":
+                draw_storage_network_card(ctx, box, snapshot.get("storage_network") or {})
             elif k == "philips_hue":
                 draw_hue_card(ctx, box, snapshot.get("hue") or {}, on_command=acts.get("hue_command", _noop))
             elif k == "ecoflow":
@@ -207,7 +248,7 @@ class HubRenderer:
                     custom_map.get(cid, {"id": cid, "title": cid, "ok": False, "metrics": []}),
                     on_open_url=acts.get("custom_open_url", _noop),
                 )
-            elif k == "todoist":
+            elif k in ("tasks", "todoist"):
                 draw_todoist_card(
                     ctx,
                     box,
@@ -219,6 +260,15 @@ class HubRenderer:
                     tile_busy=tile_busy,
                     on_cycle_tiles=acts.get("tile_cycle", _noop) if tile_enabled else None,
                 )
+            elif k == "focus_timer":
+                draw_focus_card(
+                    ctx,
+                    box,
+                    snapshot.get("focus_timer") or {},
+                    on_toggle=acts.get("focus_toggle", _noop),
+                    on_reset=acts.get("focus_reset", _noop),
+                    on_switch_phase=acts.get("focus_phase", _noop),
+                )
             elif k == "weather_card":
                 draw_weather_card(ctx, box, snapshot.get("weather") or {}, ref_now)
             elif k == "calendar_card":
@@ -229,6 +279,17 @@ class HubRenderer:
                     today=ref_now.date(),
                     on_change_month=acts.get("calendar_change_month", _noop),
                     on_today=acts.get("calendar_today", _noop),
+                )
+            elif k == "quick_actions":
+                qa_items = self.config.get("widgets", {}).get("quick_actions", {}).get("items") or []
+                draw_quick_actions_card(ctx, box, qa_items, on_trigger=acts.get("quick_action", _noop))
+            elif k == "tile_switcher":
+                draw_tile_switcher_bar(
+                    ctx,
+                    box,
+                    pack_label=tile_pack_label,
+                    busy=tile_busy,
+                    on_cycle=acts.get("tile_cycle", _noop),
                 )
 
         # Apply scroll viewport if content exceeds visible height

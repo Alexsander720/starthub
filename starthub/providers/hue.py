@@ -1,4 +1,4 @@
-"""Philips Hue Bridge local LAN HTTPS provider (Tier 2, opt-in)."""
+"""Philips Hue Bridge local LAN HTTPS provider + 1-click discovery & pairing (Tier 2, opt-in)."""
 from __future__ import annotations
 
 import ipaddress
@@ -6,7 +6,7 @@ import logging
 import queue
 import threading
 import time
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import warnings
 
 import requests
@@ -23,6 +23,92 @@ def is_valid_lan_ip(host: str) -> bool:
         return addr.is_private or addr.is_link_local
     except ValueError:
         return False
+
+
+def discover_hue_bridges(timeout: float = 4.0) -> List[str]:
+    """Discover local Philips Hue Bridge LAN IPs via Signify's official N-UPnP endpoint."""
+    found: List[str] = []
+    try:
+        resp = requests.get("https://discovery.meethue.com/", timeout=timeout)
+        if resp.status_code == 200:
+            data = resp.json()
+            if isinstance(data, list):
+                for entry in data:
+                    if isinstance(entry, dict):
+                        ip = str(entry.get("internalipaddress") or "").strip()
+                        if is_valid_lan_ip(ip) and ip not in found:
+                            found.append(ip)
+    except Exception as exc:
+        logger.debug("Hue bridge discovery failed: %s", type(exc).__name__)
+    return found
+
+
+def pair_hue_bridge(bridge_ip: str, device_type: str = "starthub#windows") -> Tuple[bool, str]:
+    """Press the physical Link button on the Hue Bridge, then call this to receive a local app_key."""
+    host = str(bridge_ip or "").strip()
+    if not is_valid_lan_ip(host):
+        return False, "Invalid private LAN IP address"
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                resp = session.post(
+                    f"https://{host}/api",
+                    json={"devicetype": device_type},
+                    timeout=(2.5, 4.0),
+                    verify=False,
+                )
+            resp.raise_for_status()
+            payload = resp.json()
+            if isinstance(payload, list) and payload:
+                first = payload[0]
+                if isinstance(first, dict):
+                    if "success" in first and isinstance(first["success"], dict):
+                        key = str(first["success"].get("username") or "").strip()
+                        if key:
+                            return True, key
+                    if "error" in first and isinstance(first["error"], dict):
+                        return False, str(first["error"].get("description") or "Bridge rejected pairing")
+            return False, "Unexpected response from Hue Bridge"
+    except Exception as exc:
+        return False, f"Connection error: {type(exc).__name__}"
+
+
+def fetch_hue_catalog(bridge_ip: str, app_key: str) -> List[Dict[str, Any]]:
+    """Fetch available rooms/zones (groups) and individual lights from a paired Hue Bridge."""
+    host = str(bridge_ip or "").strip()
+    key = str(app_key or "").strip()
+    if not is_valid_lan_ip(host) or not key:
+        return []
+    targets: List[Dict[str, Any]] = []
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for kind, icon in (("groups", "bulb"), ("lights", "monitor")):
+                    r = session.get(f"https://{host}/api/{key}/{kind}", timeout=(2.0, 3.0), verify=False)
+                    if r.status_code != 200:
+                        continue
+                    data = r.json()
+                    if not isinstance(data, dict):
+                        continue
+                    for ident, info in sorted(data.items(), key=lambda p: int(p[0]) if str(p[0]).isdigit() else 999):
+                        if not isinstance(info, dict) or not str(ident).isdigit() or str(ident) == "0":
+                            continue
+                        targets.append(
+                            {
+                                "id": str(ident),
+                                "kind": kind,
+                                "label": str(info.get("name") or f"{kind.title()} {ident}"),
+                                "icon": icon,
+                                "dimmer": kind == "groups",
+                            }
+                        )
+    except Exception as exc:
+        logger.debug("Hue catalog fetch failed: %s", type(exc).__name__)
+    return targets
 
 
 class HueProvider:
@@ -63,6 +149,7 @@ class HueProvider:
     def set_visible(self, visible: bool) -> None:
         if visible:
             self._visible.set()
+            self._due = 0.0
         else:
             self._visible.clear()
 

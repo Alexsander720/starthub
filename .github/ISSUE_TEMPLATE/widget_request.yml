@@ -1,0 +1,19 @@
+name: Widget / Integration Request
+description: Suggest a new Tier-1 or Tier-2 widget for StartHub
+title: "[Widget]: "
+labels: ["enhancement"]
+body:
+  - type: input
+    id: widget_name
+    attributes:
+      label: Widget / Service Name
+      placeholder: "e.g. Home Assistant, Discord Voice, MSI Afterburner, Notion"
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What should it display & control?
+      description: Mention whether it uses a local API/CLI, zero keys, or an opt-in token.
+    validations:
+      required: true

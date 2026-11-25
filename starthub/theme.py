@@ -13,6 +13,14 @@ DEFAULT_ACCENT: RGB = (88, 188, 255)
 MULTI_ACCENT_ROLES: Dict[str, RGB] = {
     "primary": (88, 188, 255),
     "monitor_normal": (121, 183, 213),
+    "audio": (96, 165, 250),
+    "storage": (56, 189, 248),
+    "network_down": (74, 222, 128),
+    "network_up": (192, 132, 252),
+    "focus_work": (249, 115, 22),
+    "focus_break": (52, 211, 153),
+    "quick_actions": (129, 140, 248),
+    "tile_bar": (88, 188, 255),
     "media": (99, 196, 125),
     "media_heart": (99, 212, 140),
     "hue": (240, 194, 121),
@@ -54,6 +62,8 @@ _SINGLE_TONE_FACTORS: Dict[str, Tuple[float, float]] = {
     "gamepad": (0.80, 0.98),
     "handheld": (0.90, 1.05),
     "phone_shot": (0.86, 1.04),
+    "network_up": (0.82, 1.06),
+    "focus_break": (0.88, 1.08),
 }
 
 

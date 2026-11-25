@@ -8,12 +8,20 @@
     "corner_radius": 14
   },
   "window": {
+    "trigger_mode": "auto",
+    "hotkey_enabled": true,
+    "hotkey": "Alt+Space",
     "left_width": 416,
     "right_width": 430,
+    "min_wing_width": 300,
+    "adaptive_width": true,
     "outer_width": 344,
     "gap": 10,
     "fallback_height": 774,
     "hide_delay_sec": 0.65,
+    "idle_poll_ms": 40,
+    "fade_animation": true,
+    "fade_duration_ms": 120,
     "center_overlay": true,
     "outer_columns": false,
     "start_menu_class": "DV2ControlHost"
@@ -22,16 +30,21 @@
     "left_widgets": [
       "phone_adb",
       "peripherals",
+      "audio_control",
       "media_player",
       "system_monitor",
+      "storage_network",
+      "focus_timer",
+      "quick_actions",
       "philips_hue"
     ],
     "right_widgets": [
       "ecoflow",
       "custom_json",
-      "todoist",
       "weather_card",
-      "calendar_card"
+      "tasks",
+      "calendar_card",
+      "tile_switcher"
     ]
   },
   "widgets": {
@@ -39,9 +52,19 @@
       "enabled": true,
       "poll_interval_sec": 2.0
     },
-    "media_player": {
+    "storage_network": {
       "enabled": true,
       "poll_interval_sec": 2.0,
+      "drives": ["auto"],
+      "max_drives": 3
+    },
+    "audio_control": {
+      "enabled": true,
+      "poll_interval_sec": 1.5
+    },
+    "media_player": {
+      "enabled": true,
+      "poll_interval_sec": 1.5,
       "preferred_apps": ["spotify", "ytmusic", "tidal", "music"],
       "spotify_like": {
         "enabled": false,
@@ -55,6 +78,8 @@
       "show_gamepad": true,
       "show_handheld": false,
       "show_bluetooth": true,
+      "show_bt_batteries": true,
+      "auto_hide_offline": false,
       "dsx_udp_enabled": false,
       "dsx_udp_port": 6969,
       "handheld_name": "Handheld",
@@ -65,13 +90,34 @@
       "city": "Kyiv",
       "latitude": 50.4501,
       "longitude": 30.5234,
+      "auto_geocode": true,
       "timezone": "auto",
       "units": "metric",
       "refresh_minutes": 20,
-      "show_card": true
+      "show_card": "auto"
+    },
+    "tasks": {
+      "enabled": true,
+      "mode": "auto",
+      "title": ""
+    },
+    "focus_timer": {
+      "enabled": true,
+      "work_minutes": 25,
+      "break_minutes": 5,
+      "sound_on_done": true
     },
     "calendar": {
       "enabled": true
+    },
+    "quick_actions": {
+      "enabled": true,
+      "items": [
+        { "id": "snip", "label": "Snip", "icon": "camera", "action": "snip" },
+        { "id": "terminal", "label": "Terminal", "icon": "terminal", "action": "terminal" },
+        { "id": "lock", "label": "Lock", "icon": "lock", "action": "lock" },
+        { "id": "settings", "label": "Settings", "icon": "gear", "action": "starthub_settings" }
+      ]
     },
     "philips_hue": {
       "enabled": false,

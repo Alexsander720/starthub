@@ -7,33 +7,39 @@ from . import Box, RenderContext, draw_card_surface, get_cached_image, get_photo
 
 
 def _draw_vector_phone_silhouette(ctx: RenderContext, x: int, y: int, w: int, h: int, online: bool) -> None:
-    """Clean, copyright-free vector smartphone bezel with subtle theme gradient screen."""
+    """Clean, copyright-free vector smartphone bezel with sleek lockscreen glass."""
     S = ctx.scale
     accent = ctx.theme.role("phone_screen")
-    # Outer metallic bezel
     ctx.draw.rounded_rectangle(
         (x * S, y * S, (x + w) * S, (y + h) * S),
         radius=11 * S,
-        fill=(24, 28, 36, 255),
-        outline=(118, 126, 144, 255) if online else (74, 80, 92, 255),
+        fill=(22, 26, 34, 255),
+        outline=(122, 130, 148, 255) if online else (74, 80, 92, 255),
         width=2 * S,
     )
-    # Inner screen glass with accent ambient glow
     pad = 4
+    sx1, sy1, sx2, sy2 = x + pad, y + pad, x + w - pad, y + h - pad
     ctx.draw.rounded_rectangle(
-        ((x + pad) * S, (y + pad) * S, (x + w - pad) * S, (y + h - pad) * S),
+        (sx1 * S, sy1 * S, sx2 * S, sy2 * S),
         radius=8 * S,
-        fill=ctx.theme.tint_dark(accent, 0.28) if online else (28, 31, 38, 255),
+        fill=ctx.theme.tint_dark(accent, 0.24) if online else (26, 29, 36, 255),
     )
-    # Abstract wallpaper orbs
-    if online:
-        ctx.draw.ellipse(((x + 8) * S, (y + 24) * S, (x + w - 8) * S, (y + 62) * S), fill=(*accent, 90))
-        ctx.draw.ellipse(((x + 14) * S, (y + 46) * S, (x + w - 6) * S, (y + 84) * S), fill=(*ctx.theme.role("phone_shot"), 70))
-    # Camera punch-hole
     cx = (x + w // 2) * S
-    ctx.draw.ellipse((cx - 3 * S, (y + 8) * S, cx + 3 * S, (y + 14) * S), fill=(12, 14, 18, 255))
+    if online:
+        # Subtle top glow strip + sleek lockscreen clock & status bars
+        ctx.draw.rounded_rectangle(
+            ((sx1 + 4) * S, (sy1 + 14) * S, (sx2 - 4) * S, (sy1 + 44) * S),
+            radius=6 * S,
+            fill=(*accent, 38),
+        )
+        ctx.draw.text((cx, (sy1 + 29) * S), "19:24", anchor="mm", font=ctx.font(11, "bold"), fill=(238, 244, 252, 235))
+        # Minimal notification skeleton lines
+        ctx.draw.rounded_rectangle(((sx1 + 6) * S, (sy1 + 52) * S, (sx2 - 6) * S, (sy1 + 64) * S), radius=4 * S, fill=(255, 255, 255, 26))
+        ctx.draw.rounded_rectangle(((sx1 + 6) * S, (sy1 + 68) * S, (sx2 - 12) * S, (sy1 + 78) * S), radius=4 * S, fill=(255, 255, 255, 18))
+    # Camera punch-hole
+    ctx.draw.ellipse((cx - 2.5 * S, (y + 8) * S, cx + 2.5 * S, (y + 13) * S), fill=(12, 14, 18, 255))
     # Minimal home indicator pill
-    ctx.draw.rounded_rectangle((cx - 10 * S, (y + h - 10) * S, cx + 10 * S, (y + h - 8) * S), radius=S, fill=(210, 218, 232, 180))
+    ctx.draw.rounded_rectangle((cx - 10 * S, (y + h - 9) * S, cx + 10 * S, (y + h - 7) * S), radius=S, fill=(210, 218, 232, 185))
 
 
 def draw_phone_card(

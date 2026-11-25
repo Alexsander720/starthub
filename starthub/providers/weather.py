@@ -1,4 +1,4 @@
-"""Open-Meteo weather provider (Tier 1, free, zero API keys)."""
+"""Open-Meteo weather provider with free city geocoding (Tier 1, zero API keys)."""
 from __future__ import annotations
 
 import datetime
@@ -7,7 +7,7 @@ import math
 from pathlib import Path
 import threading
 import time
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 from urllib.parse import urlencode
 
 import requests
@@ -17,11 +17,63 @@ from ..config import read_json_safe, write_json_atomic
 logger = logging.getLogger("starthub.providers.weather")
 
 
+def geocode_city(
+    city_name: str,
+    *,
+    count: int = 5,
+    language: str = "en",
+    session: Optional[requests.Session] = None,
+) -> List[Dict[str, Any]]:
+    """Look up city coordinates & timezone via Open-Meteo's free zero-key Geocoding API."""
+    query = str(city_name or "").strip()
+    if len(query) < 2:
+        return []
+    url = "https://geocoding-api.open-meteo.com/v1/search?" + urlencode(
+        {"name": query, "count": str(max(1, min(10, count))), "language": language, "format": "json"}
+    )
+    http = session or requests
+    try:
+        resp = http.get(url, timeout=(4, 6))
+        resp.raise_for_status()
+        data = resp.json()
+        results = data.get("results") or []
+        out: List[Dict[str, Any]] = []
+        for item in results:
+            if not isinstance(item, dict):
+                continue
+            lat = item.get("latitude")
+            lon = item.get("longitude")
+            if not isinstance(lat, (int, float)) or not isinstance(lon, (int, float)):
+                continue
+            parts = [str(item.get("name") or query)]
+            if item.get("admin1"):
+                parts.append(str(item["admin1"]))
+            if item.get("country"):
+                parts.append(str(item["country"]))
+            out.append(
+                {
+                    "name": str(item.get("name") or query),
+                    "display": ", ".join(parts),
+                    "latitude": round(float(lat), 4),
+                    "longitude": round(float(lon), 4),
+                    "timezone": str(item.get("timezone") or "auto"),
+                }
+            )
+        return out
+    except Exception as exc:
+        logger.debug("City geocode failed for %s: %s", query, type(exc).__name__)
+        return []
+
+
 def build_open_meteo_url(config: Dict[str, Any]) -> str:
     units = str(config.get("units", "metric")).lower()
+    lat = config.get("latitude")
+    lon = config.get("longitude")
+    lat_val = float(lat) if lat is not None else 50.4501
+    lon_val = float(lon) if lon is not None else 30.5234
     params = {
-        "latitude": f"{float(config.get('latitude', 50.4501)):.4f}",
-        "longitude": f"{float(config.get('longitude', 30.5234)):.4f}",
+        "latitude": f"{lat_val:.4f}",
+        "longitude": f"{lon_val:.4f}",
         "current": "temperature_2m,apparent_temperature,weather_code,wind_speed_10m,is_day,relative_humidity_2m",
         "daily": "temperature_2m_max,temperature_2m_min,weather_code,sunrise,sunset",
         "timezone": str(config.get("timezone") or "auto"),
@@ -67,18 +119,21 @@ class WeatherProvider:
         cache_dir: Path,
         on_change: Optional[Callable[[], None]] = None,
     ):
-        self.config = config
+        self.config = dict(config)
         self.cache_file = Path(cache_dir) / "weather_cache.json"
         self.on_change = on_change
         self.interval = max(300, int(config.get("refresh_minutes", 20)) * 60)
         self._lock = threading.Lock()
         self._stopped = threading.Event()
+        self._geocoded_city: Optional[str] = None
 
         cached = read_json_safe(self.cache_file, {})
         if not isinstance(cached, dict):
             cached = {}
-        # Drop cached data if user switched city/units
-        if cached.get("city") and cached.get("city") != config.get("city"):
+        # Drop cached data if user switched city or units
+        if (cached.get("city") and cached.get("city") != config.get("city")) or (
+            cached.get("units") and cached.get("units") != config.get("units")
+        ):
             cached = {}
         self._state: Dict[str, Any] = cached or {
             "city": str(config.get("city") or "Kyiv"),
@@ -101,6 +156,29 @@ class WeatherProvider:
     def stop(self) -> None:
         self._stopped.set()
 
+    def _maybe_resolve_city_coords(self, session: Optional[requests.Session] = None) -> None:
+        city = str(self.config.get("city") or "").strip()
+        if not city or not self.config.get("auto_geocode", True):
+            return
+        lat = self.config.get("latitude")
+        lon = self.config.get("longitude")
+        # Auto-geocode when coords are omitted OR user changed city name while leaving default Kyiv coords
+        is_default_kyiv_coords = (
+            lat is not None
+            and lon is not None
+            and abs(float(lat) - 50.4501) < 0.001
+            and abs(float(lon) - 30.5234) < 0.001
+            and city.lower() not in ("kyiv", "kiev", "киев", "київ")
+        )
+        if (lat is None or lon is None or is_default_kyiv_coords) and self._geocoded_city != city.lower():
+            matches = geocode_city(city, count=1, session=session)
+            if matches:
+                self.config["latitude"] = matches[0]["latitude"]
+                self.config["longitude"] = matches[0]["longitude"]
+                if self.config.get("timezone") in (None, "", "auto"):
+                    self.config["timezone"] = matches[0].get("timezone") or "auto"
+                self._geocoded_city = city.lower()
+
     def _loop(self) -> None:
         try:
             age = time.time() - float(self._state.get("updated_at", 0))
@@ -115,9 +193,10 @@ class WeatherProvider:
                 break
 
     def poll_once(self, session: Optional[requests.Session] = None) -> Dict[str, Any]:
-        url = build_open_meteo_url(self.config)
         http = session or requests
         try:
+            self._maybe_resolve_city_coords(session=session)
+            url = build_open_meteo_url(self.config)
             resp = http.get(url, timeout=(4, 8))
             resp.raise_for_status()
             current, daily = validate_open_meteo_payload(resp.json())
