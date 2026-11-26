@@ -42,6 +42,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--settings", action="store_true", help="Open the GUI Settings window immediately on startup")
     parser.add_argument("--doctor", action="store_true", help="Print a sanitized environment diagnostics report and exit")
     parser.add_argument("--trigger", choices=("auto", "start11", "windows11", "hotkey"), default=None, help="Override trigger mode")
+    parser.add_argument(
+        "--preset",
+        choices=("fluent_dark", "fluent_light", "amoled_black", "catppuccin_mocha", "nord", "tokyo_night"),
+        default=None,
+        help="Override theme visual preset",
+    )
     parser.add_argument("--theme", choices=("multi_accent", "single_accent"), default=None, help="Override theme mode")
     parser.add_argument("--accent", default=None, help="Override accent color (#RRGGBB or 'windows')")
     parser.add_argument("--lang", choices=("en", "ru", "uk"), default=None, help="Override UI language")
@@ -61,12 +67,15 @@ def main(argv: list[str] | None = None) -> int:
     overrides = {}
     if args.lang:
         overrides["language"] = args.lang
-    if args.theme or args.accent:
+    if args.theme or args.accent or args.preset:
         overrides["theme"] = {}
+        if args.preset:
+            overrides["theme"]["preset"] = args.preset
         if args.theme:
             overrides["theme"]["mode"] = args.theme
         if args.accent:
             overrides["theme"]["accent_color"] = args.accent
+            overrides["theme"]["accent_explicit"] = True
     if args.trigger:
         overrides.setdefault("window", {})["trigger_mode"] = args.trigger
 

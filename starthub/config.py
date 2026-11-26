@@ -19,6 +19,7 @@ DEFAULT_CONFIG_PATH = REPO_ROOT / "config.json"
 DEFAULT_CACHE_DIR = REPO_ROOT / "cache"
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+CONFIG_SCHEMA_VERSION = 2
 
 ALL_WIDGET_IDS: Tuple[str, ...] = (
     "phone_adb",
@@ -108,13 +109,26 @@ LAYOUT_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 DEFAULT_CONFIG: Dict[str, Any] = {
+    "config_version": CONFIG_SCHEMA_VERSION,
     "language": "en",
+    "updates": {
+        "check_enabled": True,
+    },
     "theme": {
+        "preset": "fluent_dark",
         "mode": "multi_accent",
         "accent_color": "#58BCFF",
         "panel_alpha": 180,
         "blur": True,
         "corner_radius": 14,
+        "custom_colors": {
+            "panel_bg": "",
+            "tile_bg": "",
+            "border": "",
+            "text_primary": "",
+            "text_secondary": "",
+        },
+        "role_overrides": {},
     },
     "window": {
         "trigger_mode": "auto",  # "auto" (Start11 -> Win11 Start) | "start11" | "windows11" | "hotkey"
@@ -132,6 +146,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "fade_animation": True,
         "fade_duration_ms": 120,
         "center_overlay": True,
+        "center_overlay_safety_margin": 14,
         "outer_columns": False,
         "start_menu_class": "DV2ControlHost",
     },
@@ -362,6 +377,51 @@ def load_raw_user_config(path: Optional[Path | str] = None) -> Dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def migrate_config(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Non-destructively migrate older StartHub config.json files to the latest schema version."""
+    data = copy.deepcopy(raw) if isinstance(raw, dict) else {}
+    ver = int(data.get("config_version", 1) or 1)
+    if ver < 2:
+        # Migrate legacy "todoist" widget ID inside layout arrays -> unified "tasks"
+        lay = data.get("layout")
+        if isinstance(lay, dict):
+            for key in ("left_widgets", "right_widgets"):
+                if isinstance(lay.get(key), list):
+                    lay[key] = ["tasks" if w == "todoist" else w for w in lay[key]]
+        # Ensure new theme customization sub-dicts exist cleanly
+        theme = data.setdefault("theme", {})
+        if isinstance(theme, dict):
+            theme.setdefault("preset", "fluent_dark")
+            theme.setdefault("custom_colors", {})
+            theme.setdefault("role_overrides", {})
+        data["config_version"] = CONFIG_SCHEMA_VERSION
+    return data
+
+
+def export_profile_data(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Export a shareable theme + widget layout profile (strictly zero API keys, IPs, or personal paths)."""
+    return {
+        "starthub_profile": True,
+        "config_version": CONFIG_SCHEMA_VERSION,
+        "theme": copy.deepcopy(cfg.get("theme", {})),
+        "window": {
+            k: cfg.get("window", {}).get(k)
+            for k in (
+                "trigger_mode",
+                "left_width",
+                "right_width",
+                "gap",
+                "adaptive_width",
+                "fade_animation",
+                "center_overlay",
+                "center_overlay_safety_margin",
+            )
+            if k in cfg.get("window", {})
+        },
+        "layout": copy.deepcopy(cfg.get("layout", {})),
+    }
+
+
 def save_config_patch(path: Optional[Path | str], patch: Dict[str, Any]) -> bool:
     """Merge a partial update into raw config.json without clobbering ${ENV_VAR} placeholders."""
     cfg_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
@@ -372,7 +432,9 @@ def save_config_patch(path: Optional[Path | str], patch: Dict[str, Any]) -> bool
             existing = read_json_safe(example, {})
         if not isinstance(existing, dict) or not existing:
             existing = copy.deepcopy(DEFAULT_CONFIG)
+    existing = migrate_config(existing)
     merged = deep_merge(existing, patch)
+    merged["config_version"] = CONFIG_SCHEMA_VERSION
     return write_json_atomic(cfg_path, merged)
 
 
@@ -397,6 +459,9 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     cfg["language"] = lang if lang in ("en", "ru", "uk") else "en"
 
     theme = cfg.setdefault("theme", {})
+    valid_presets = ("fluent_dark", "fluent_light", "amoled_black", "catppuccin_mocha", "nord", "tokyo_night")
+    preset = str(theme.get("preset", "fluent_dark")).strip().lower()
+    theme["preset"] = preset if preset in valid_presets else "fluent_dark"
     mode = str(theme.get("mode", "multi_accent")).strip().lower()
     theme["mode"] = mode if mode in ("multi_accent", "single_accent") else "multi_accent"
     accent = str(theme.get("accent_color", "#58BCFF")).strip()
@@ -408,6 +473,10 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     theme["panel_alpha"] = _clamp_int(theme.get("panel_alpha", 180), 80, 255, 180)
     theme["blur"] = bool(theme.get("blur", True))
     theme["corner_radius"] = _clamp_int(theme.get("corner_radius", 14), 0, 24, 14)
+    if not isinstance(theme.get("custom_colors"), dict):
+        theme["custom_colors"] = {}
+    if not isinstance(theme.get("role_overrides"), dict):
+        theme["role_overrides"] = {}
 
     win = cfg.setdefault("window", {})
     tmode = str(win.get("trigger_mode", "auto")).strip().lower()
@@ -426,6 +495,7 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     win["fade_animation"] = bool(win.get("fade_animation", True))
     win["fade_duration_ms"] = _clamp_int(win.get("fade_duration_ms", 120), 40, 400, 120)
     win["center_overlay"] = bool(win.get("center_overlay", True))
+    win["center_overlay_safety_margin"] = _clamp_int(win.get("center_overlay_safety_margin", 14), 0, 48, 14)
     win["outer_columns"] = bool(win.get("outer_columns", False))
     win["start_menu_class"] = str(win.get("start_menu_class") or "DV2ControlHost")
 
@@ -535,6 +605,7 @@ def load_config(
         except Exception as exc:
             logger.warning("Could not parse %s (%s); using defaults", cfg_path, exc)
 
+    user_data = migrate_config(user_data)
     merged = deep_merge(DEFAULT_CONFIG, user_data)
     if overrides:
         merged = deep_merge(merged, overrides)

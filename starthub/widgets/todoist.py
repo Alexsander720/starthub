@@ -55,13 +55,13 @@ def draw_todoist_card(
         ctx.draw.rounded_rectangle(
             (bx * S, by * S, (bx + 98) * S, (by + 28) * S),
             radius=7 * S,
-            fill=ctx.theme.tile_bg_hover if hov_t else (57, 59, 64, 240),
-            outline=(*ctx.theme.role("primary"), 220) if hov_t else (96, 100, 110, 210),
+            fill=ctx.theme.tile_bg_hover if hov_t else ctx.theme.tile_bg,
+            outline=(*ctx.theme.role("primary"), 220) if hov_t else ctx.theme.tile_edge,
             width=S,
         )
         for dx in (0, 7):
             for dy in (0, 7):
-                ctx.draw.rectangle(((bx + 9 + dx) * S, (by + 8 + dy) * S, (bx + 13 + dx) * S, (by + 12 + dy) * S), fill=(209, 220, 238, 255))
+                ctx.draw.rectangle(((bx + 9 + dx) * S, (by + 8 + dy) * S, (bx + 13 + dx) * S, (by + 12 + dy) * S), fill=ctx.theme.text_secondary)
         t_lbl = "…" if tile_busy else ctx.fit_text(tile_pack_label or ctx.i18n.t("tiles.pack_fallback"), 64, 13, "semibold")
         ctx.draw.text(((bx + 28) * S, (by + 5) * S), t_lbl, font=ctx.font(13, "semibold"), fill=ctx.theme.text_primary)
         ctx.add_spot(bx, by, bx + 98, by + 28, on_cycle_tiles, None, "tile_set")

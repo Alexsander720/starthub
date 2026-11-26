@@ -21,11 +21,20 @@ def format_degree(val: Any) -> str:
     return "—"
 
 
-def draw_weather_icon(draw: ImageDraw.ImageDraw, x: float, y: float, code: Any, scale_px: float, icon_scale: float = 1.0) -> None:
+def draw_weather_icon(
+    draw: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    code: Any,
+    scale_px: float,
+    icon_scale: float = 1.0,
+    *,
+    light_bg: bool = False,
+) -> None:
     S = scale_px * icon_scale
     px, py = x * scale_px, y * scale_px
-    gold = (255, 205, 91, 255)
-    cloud = (190, 201, 215, 255)
+    gold = (232, 166, 24, 255) if light_bg else (255, 205, 91, 255)
+    cloud = (126, 140, 160, 255) if light_bg else (190, 201, 215, 255)
     if code in (0, 1, 2):
         sx, sy = (px - 9 * S, py - 9 * S) if code else (px, py)
         draw.ellipse((sx - 8 * S, sy - 8 * S, sx + 8 * S, sy + 8 * S), fill=gold)
@@ -200,7 +209,7 @@ def draw_weather_card(ctx: RenderContext, box: Box, weather: Dict[str, Any], now
     ctx.draw.text(((x1 + 16) * S, (y1 + 12) * S), city, font=ctx.font(17, "bold"), fill=ctx.theme.text_primary)
     temp_str = format_degree(current.get("temperature_2m"))
     ctx.draw.text(((x1 + 16) * S, (y1 + 36) * S), temp_str, font=ctx.font(38, "light"), fill=ctx.theme.text_primary)
-    draw_weather_icon(ctx.draw, x2 - 48, y1 + 52, current.get("weather_code", 3), S, 1.05)
+    draw_weather_icon(ctx.draw, x2 - 48, y1 + 52, current.get("weather_code", 3), S, 1.05, light_bg=ctx.theme.is_light)
 
     desc = ctx.i18n.weather_description(current.get("weather_code")) if current else ctx.i18n.t("weather.loading")
     feels = ctx.i18n.t("weather.feels_like", temp=format_degree(current.get("apparent_temperature")))
@@ -232,7 +241,7 @@ def draw_weather_card(ctx: RenderContext, box: Box, weather: Dict[str, Any], now
             ry = y1 + 140 + i * 26
             lbl = ctx.i18n.t("calendar.today") if day == now.date() else f"{wshort[day.weekday()]} {day.day}"
             ctx.draw.text(((x1 + 16) * S, ry * S), lbl, font=ctx.font(13, "semibold"), fill=ctx.theme.text_primary)
-            draw_weather_icon(ctx.draw, x2 - 120, ry + 8, codes[i] if i < len(codes) else 3, S, 0.42)
+            draw_weather_icon(ctx.draw, x2 - 120, ry + 8, codes[i] if i < len(codes) else 3, S, 0.42, light_bg=ctx.theme.is_light)
             lo = format_degree(mins[i] if i < len(mins) else None)
             hi = format_degree(maxs[i] if i < len(maxs) else None)
             ctx.draw.text(((x2 - 92) * S, ry * S), f"{lo} / {hi}", font=ctx.font(13), fill=ctx.theme.text_secondary)

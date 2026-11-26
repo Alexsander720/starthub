@@ -39,11 +39,26 @@ Install and run without creating a single account or API key — both wings are 
 
 ---
 
-## Multi-Accent vs Single-Accent Theme
+## Multi-Accent, Single-Accent & 6 Built-In Theme Presets
 
-Inspired by community feedback on `r/desktops` (shoutout to `u/kootenay_eric`!), switch instantly between **`multi_accent`** and **`single_accent`** (including live Windows 11 DWM accent syncing via `"accent_color": "windows"`). Critical alerts (EcoFlow `BLACKOUT`, CPU/GPU/Disk `>90%`, low battery `≤15%`) always retain alert visibility.
+Inspired by community feedback on `r/desktops` (shoutout to `u/kootenay_eric`!), customize **every single color** visually in GUI Settings:
+- **6 built-in presets:** `Fluent Dark`, `Fluent Light` (frosted white), `AMOLED Pure Black`, `Catppuccin Mocha`, `Nord Frost`, and `Tokyo Night`.
+- **Multi-Accent or Single-Accent** (including live Windows 11 DWM accent syncing via `"accent_color": "windows"`).
+- **Custom surface & per-widget colors:** override panel background, tile fill, borders, text, or individual widget accents + **Export / Import** shareable theme profiles (zero secrets).
+- Critical alerts (EcoFlow `BLACKOUT`, CPU/GPU/Disk `>90%`, low battery `≤15%`) always retain alert visibility.
 
+<img src="docs/assets/theme_presets.png" alt="StartHub built-in theme presets: Fluent Dark, Fluent Light, Catppuccin Mocha, Tokyo Night" width="100%">
+<br><br>
 <img src="docs/assets/theme_comparison.png" alt="StartHub multi_accent vs single_accent theme comparison" width="100%">
+
+Full color, widget, and Zero-Overlap guide: **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)**
+
+---
+
+## Zero-Overlap Protection & Smooth Updates
+
+- **Tiles can never break your widgets (and widgets never block tiles):** Start11 center Weather/Clock overlays are **100% click-through** (`WS_EX_TRANSPARENT`), verify live on-screen `LVM_GETITEMRECT` bounds with a configurable safety margin (`14px`), instantly yield on Start11 search, tile dragging, or right-click menus, and **automatically relocate Weather to the side wing** (`show_card: "auto"`) whenever pinned tiles fill the center space.
+- **Update-proof configs:** Automatic schema migrations (`config_version: 2`), non-intrusive 24h GitHub Releases check, and 1-click **`Update.cmd`** that backs up `config.json` before pulling updates.
 
 ---
 

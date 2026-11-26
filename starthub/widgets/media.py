@@ -22,17 +22,17 @@ def _draw_media_button(
     S = ctx.scale
     x1, y1, x2, y2 = box
     accent = ctx.theme.role("media_heart")
-    bg = ctx.theme.tint_dark(accent, 0.25) if active else (47, 49, 54, 210)
+    bg = ctx.theme.tint_dark(accent, 0.25) if active else ctx.theme.tile_bg
     if ctx.hover == hid and enabled:
-        bg = (65, 69, 76, 245)
+        bg = ctx.theme.tile_bg_hover
     ctx.draw.rounded_rectangle(
         (x1 * S, y1 * S, x2 * S, y2 * S),
         radius=9 * S,
         fill=bg,
-        outline=ctx.theme.card_edge,
+        outline=ctx.theme.tile_edge,
         width=S,
     )
-    ink = (240, 242, 246, 255) if (callback and enabled) else (135, 142, 151, 255)
+    ink = ctx.theme.text_primary if (callback and enabled) else ctx.theme.text_muted
     cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
     if label == "heart":
         pts = []

@@ -56,12 +56,20 @@ python -m starthub [options]
   --settings                Open the GUI Settings window immediately on startup
   --doctor                  Print a sanitized environment diagnostics report and exit
   --trigger MODE            Override trigger mode (auto | start11 | windows11 | hotkey)
+  --preset PRESET           Override theme preset (fluent_dark | fluent_light | amoled_black | catppuccin_mocha | nord | tokyo_night)
   --theme MODE              Override theme mode (multi_accent | single_accent)
   --accent COLOR            Override accent (#RRGGBB or "windows")
   --lang LANG               Override language (en | ru | uk)
   --config PATH             Use a custom config.json path
   --render-test DIR         Headlessly render PNG previews into DIR and exit
 ```
+
+## Updating Safely Without Losing Settings
+
+- **Source installs:** Double-click **`Update.cmd`** (or run `.\update.ps1 -Optional`). It automatically backs up `config.json` to `cache/backups/`, pulls updates, and refreshes `.venv`.
+- **Portable EXE installs:** Extract the new release ZIP and copy your `config.json`, `cache/local_tasks.json`, and `packs/` into it — older config schemas migrate automatically (`config_version: 2`).
+
+For deep theming, custom colors, Quick Actions/Custom JSON builders, and Start11 Zero-Overlap protection, see **[docs/CUSTOMIZATION.md](CUSTOMIZATION.md)**.
 
 ## Troubleshooting
 

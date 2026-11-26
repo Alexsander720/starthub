@@ -82,7 +82,7 @@ def draw_phone_card(
     ctx.draw.rounded_rectangle(
         (bx1 * S, by1 * S, (x2 - 14) * S, (by1 + 26) * S),
         radius=8 * S,
-        fill=(38, 43, 54, 255),
+        fill=ctx.theme.tile_bg,
         outline=ctx.theme.tile_edge,
         width=S,
     )
@@ -205,7 +205,7 @@ def draw_photos_card(
         ctx.draw.rounded_rectangle(
             (cx1 * S, cy1 * S, cx2 * S, cy2 * S),
             radius=11 * S,
-            fill=ctx.theme.tile_bg_hover if hov else (22, 24, 30, 255),
+            fill=ctx.theme.tile_bg_hover if hov else ctx.theme.tile_bg_inactive,
             outline=(*accent, 255) if hov else ctx.theme.tile_edge,
             width=2 * S if hov else S,
         )
@@ -216,8 +216,8 @@ def draw_photos_card(
         f_p = ctx.font(12, "bold")
         ptb = ctx.draw.textbbox((0, 0), lbl, font=f_p)
         pw = (ptb[2] - ptb[0]) // S + 14
-        ctx.draw.rounded_rectangle(((cx1 + 6) * S, (cy2 - 26) * S, (cx1 + 6 + pw) * S, (cy2 - 6) * S), radius=6 * S, fill=(16, 18, 24, 240))
-        ctx.draw.text(((cx1 + 13) * S, (cy2 - 23) * S), lbl, font=f_p, fill=ctx.theme.text_primary)
+        ctx.draw.rounded_rectangle(((cx1 + 6) * S, (cy2 - 26) * S, (cx1 + 6 + pw) * S, (cy2 - 6) * S), radius=6 * S, fill=(16, 18, 24, 230))
+        ctx.draw.text(((cx1 + 13) * S, (cy2 - 23) * S), lbl, font=f_p, fill=(245, 247, 252, 255))
         ctx.add_spot(cx1, cy1, cx2, cy2, lambda i=idx: on_copy_photo(i), lambda i=idx: on_open_photo(i), f"photo_{idx}")
 
 
@@ -250,7 +250,7 @@ def draw_sms_bar_or_drawer(
         ctx.draw.rounded_rectangle(
             (x1 * S, dy1 * S, x2 * S, y2 * S),
             radius=15 * S,
-            fill=(24, 27, 35, 255),
+            fill=(*ctx.theme.panel_rgb, 252),
             outline=(*sms_rgb, 255),
             width=2 * S,
         )

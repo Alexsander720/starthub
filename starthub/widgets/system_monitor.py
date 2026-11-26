@@ -17,7 +17,7 @@ def draw_system_monitor(ctx: RenderContext, box: Box, state: Dict[str, Any]) -> 
         ("gpu", ctx.i18n.t("monitor.gpu")),
         ("ram", ctx.i18n.t("monitor.ram")),
     )
-    icon_ink = (198, 205, 214, 255)
+    icon_ink = ctx.theme.text_secondary
     for i, (key, label) in enumerate(keys):
         x = x1 + 12 + i * col_w
         draw_panel_icon(ctx, key, x, y1 + 9, icon_ink)

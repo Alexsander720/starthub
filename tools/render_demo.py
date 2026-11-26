@@ -359,6 +359,37 @@ def render_custom_json_layouts(lang: str = "en") -> Image.Image:
     return out.convert("RGB")
 
 
+def render_theme_presets_showcase(lang: str = "en") -> Image.Image:
+    """Showcase 4 distinct built-in theme presets side by side: Fluent Dark, Fluent Light, Catppuccin Mocha, Tokyo Night."""
+    fixed_now = datetime.datetime(2026, 11, 25, 19, 24)
+    fonts = FontBank()
+    i18n = I18n(lang)
+    w, h = 416, 774
+    pad, gap, hdr_h = 28, 22, 50
+    presets = [
+        ("fluent_dark", "Fluent Dark", "Default Windows 11 acrylic"),
+        ("fluent_light", "Fluent Light", "Frosted light surface & dark ink"),
+        ("catppuccin_mocha", "Catppuccin Mocha", "Pastel dark community favorite"),
+        ("tokyo_night", "Tokyo Night", "Deep indigo & neon accents"),
+    ]
+    total_w = pad * 2 + w * len(presets) + gap * (len(presets) - 1)
+    total_h = pad * 2 + hdr_h + h
+    canvas = _rich_wallpaper_backdrop(total_w, total_h, (88, 188, 255))
+    d = ImageDraw.Draw(canvas)
+    for idx, (key, title, sub) in enumerate(presets):
+        cfg = load_config(demo=False, overrides={"language": lang, "theme": {"preset": key, "mode": "multi_accent"}})
+        theme = Theme.from_config(cfg)
+        renderer = HubRenderer(cfg, theme, i18n, fonts)
+        snap = build_demo_snapshot(i18n, now=fixed_now)
+        snap["media"]["like_enabled"] = False
+        wing_img, _, _ = renderer.render_wing("left", w, h, snap, now=fixed_now, center_overlay_active=True)
+        ox = pad + idx * (w + gap)
+        d.text((ox + 4, pad), title, font=fonts.get(18, "bold"), fill=(246, 248, 252, 255))
+        d.text((ox + 4, pad + 24), sub, font=fonts.get(12, "regular"), fill=(186, 196, 214, 255))
+        _composite_acrylic_panel(canvas, wing_img, (ox, pad + hdr_h))
+    return canvas.convert("RGB")
+
+
 def generate_example_tile_pack() -> Path:
     pack_dir = REPO_ROOT / "packs" / "example_minimal"
     pack_dir.mkdir(parents=True, exist_ok=True)
@@ -388,6 +419,7 @@ def main() -> int:
         (assets_dir / "demo_single_accent.png", render_three_panel_scene("single_accent")),
         (assets_dir / "demo_tier1_default.png", render_three_panel_scene("multi_accent", tier1_only=True)),
         (assets_dir / "theme_comparison.png", render_theme_comparison()),
+        (assets_dir / "theme_presets.png", render_theme_presets_showcase()),
         (assets_dir / "ecoflow_focus.png", render_ecoflow_focus()),
         (assets_dir / "custom_json_layouts.png", render_custom_json_layouts()),
     ]

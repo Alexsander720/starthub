@@ -1,11 +1,24 @@
 {
+  "config_version": 2,
   "language": "en",
+  "updates": {
+    "check_enabled": true
+  },
   "theme": {
+    "preset": "fluent_dark",
     "mode": "multi_accent",
     "accent_color": "#58BCFF",
     "panel_alpha": 180,
     "blur": true,
-    "corner_radius": 14
+    "corner_radius": 14,
+    "custom_colors": {
+      "panel_bg": "",
+      "tile_bg": "",
+      "border": "",
+      "text_primary": "",
+      "text_secondary": ""
+    },
+    "role_overrides": {}
   },
   "window": {
     "trigger_mode": "auto",
@@ -23,6 +36,7 @@
     "fade_animation": true,
     "fade_duration_ms": 120,
     "center_overlay": true,
+    "center_overlay_safety_margin": 14,
     "outer_columns": false,
     "start_menu_class": "DV2ControlHost"
   },
@@ -182,6 +196,7 @@
           "id": "homelab",
           "title": "Home Lab",
           "source": "cache/custom_metrics.json",
+          "layout": "columns",
           "refresh_sec": 15,
           "click_url": ""
         }

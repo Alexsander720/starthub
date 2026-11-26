@@ -310,6 +310,7 @@ class StartHubApp:
         self.fade_animation: bool = bool(win_cfg.get("fade_animation", True))
         self.fade_duration_ms: int = int(win_cfg.get("fade_duration_ms", 120))
         self.center_overlay: bool = bool(win_cfg["center_overlay"])
+        self.center_safety_margin: int = int(win_cfg.get("center_overlay_safety_margin", 14))
         self.start_menu_class: str = str(win_cfg["start_menu_class"])
 
     def _init_surfaces(self) -> None:
@@ -318,10 +319,14 @@ class StartHubApp:
             if IS_WINDOWS and win32gui is not None:
                 apply_win11_rounded(hwnd, 1 if inset else 2, None)
                 ex_style = win32gui.GetWindowLong(hwnd, win32con.GWL_EXSTYLE)
+                extra = win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_NOACTIVATE
+                if inset:
+                    # Center overlays are 100% click-through so they can NEVER block a Start11 tile or scrollbar
+                    extra |= win32con.WS_EX_TRANSPARENT
                 win32gui.SetWindowLong(
                     hwnd,
                     win32con.GWL_EXSTYLE,
-                    (ex_style | win32con.WS_EX_TOOLWINDOW | win32con.WS_EX_NOACTIVATE) & ~win32con.WS_EX_APPWINDOW,
+                    (ex_style | extra) & ~win32con.WS_EX_APPWINDOW,
                 )
             self._surfaces[side] = LayeredSurface(hwnd)
             if not inset and IS_WINDOWS:
@@ -760,6 +765,45 @@ class StartHubApp:
             self._invalidate_center_geometry()
         return False
 
+    def _center_obstructions(self, menu: int, view: int) -> Tuple[bool, List[Tuple[int, int, int, int]]]:
+        """Detect live Start11 search results, right-click menus, or tile folder popups that must hide overlays."""
+        if not IS_WINDOWS or win32gui is None or not menu:
+            return False, []
+        # 1) Active Windows context menu (#32768) anywhere on desktop (e.g. right-clicking a Start11 tile)
+        try:
+            popup = win32gui.FindWindow("#32768", None)
+            if popup and win32gui.IsWindowVisible(popup):
+                return True, []
+        except Exception:
+            pass
+
+        blocked = False
+        occluders: List[Tuple[int, int, int, int]] = []
+        try:
+            vr = win32gui.GetWindowRect(view) if view else None
+            def _child_cb(h: int, _extra) -> bool:
+                nonlocal blocked
+                if h == view or not win32gui.IsWindowVisible(h):
+                    return True
+                cls = win32gui.GetClassName(h)
+                # Active text typed in Start11 search box -> search results take over center pane
+                if cls in ("Edit", "RichEdit20W", "RICHEDIT50W"):
+                    txt = (win32gui.GetWindowText(h) or "").strip()
+                    if txt:
+                        blocked = True
+                        return False
+                # Any visible sibling list/popup overlapping the tile area becomes an obstacle
+                if vr and cls in ("SysListView32", "ListBox", "Chrome_WidgetWin_1", "Internet Explorer_Server"):
+                    cr = win32gui.GetWindowRect(h)
+                    if max(cr[0], vr[0]) < min(cr[2], vr[2]) and max(cr[1], vr[1]) < min(cr[3], vr[3]):
+                        occluders.append(cr)
+                return True
+
+            win32gui.EnumChildWindows(menu, _child_cb, None)
+        except Exception:
+            pass
+        return blocked, occluders
+
     def _center_safe(self, rect, work, force: bool = False) -> bool:
         if not IS_WINDOWS or win32gui is None:
             return False
@@ -829,12 +873,17 @@ class StartHubApp:
                 self._center_result_used = result
             self._center_grid_valid = bool(self._center_grid)
             view = self._center_view
-            native_visible = bool(view and win32gui.IsWindowVisible(view))
-            native_rect = win32gui.GetWindowRect(view) if view else None
-            scroll = (
-                tuple(ctypes.windll.user32.GetScrollPos(wintypes.HWND(view), bar) for bar in (win32con.SB_VERT, win32con.SB_HORZ))
-                if view
-                else None
+            if not view or not self._center_menu:
+                return False
+            blocked, occluders = self._center_obstructions(self._center_menu, view)
+            self._center_occluders = occluders
+            if blocked:
+                return False
+            native_visible = bool(win32gui.IsWindowVisible(view))
+            native_rect = win32gui.GetWindowRect(view)
+            scroll = tuple(
+                ctypes.windll.user32.GetScrollPos(wintypes.HWND(view), bar)
+                for bar in (win32con.SB_VERT, win32con.SB_HORZ)
             )
             return bool(
                 self._center_grid_valid
@@ -843,7 +892,13 @@ class StartHubApp:
                 and not self._center_refresh_required
                 and not (win32gui.GetWindowLong(view, win32con.GWL_STYLE) & (win32con.WS_HSCROLL | win32con.WS_VSCROLL))
                 and native_rect == self._center_grid["native_rect"]
-                and center_layouts(rect, work, self._center_grid)
+                and center_layouts(
+                    rect,
+                    work,
+                    self._center_grid,
+                    safety_margin=self.center_safety_margin,
+                    occluders=occluders,
+                )
             )
         except Exception:
             self._center_grid_valid = False
@@ -1043,7 +1098,13 @@ class StartHubApp:
 
         center_map: Dict[str, Tuple[int, int, int, int]] = {}
         if source == "start11" and self.center_overlay and not self.preview_mode and self._center_safe(rect, work, force=show):
-            center_map = center_layouts(rect, work, self._center_grid)
+            center_map = center_layouts(
+                rect,
+                work,
+                self._center_grid,
+                safety_margin=self.center_safety_margin,
+                occluders=getattr(self, "_center_occluders", ()),
+            )
 
         prev_center_active = self._center_overlay_active
         self._center_overlay_active = bool(center_map)
@@ -1097,7 +1158,17 @@ class StartHubApp:
                 self._place_panels(s_rect, source=source)
             elif source == "start11" and self.center_overlay:
                 safe = self._center_safe(s_rect, self._center_work)
-                desired = center_layouts(s_rect, self._center_work, self._center_grid) if safe else {}
+                desired = (
+                    center_layouts(
+                        s_rect,
+                        self._center_work,
+                        self._center_grid,
+                        safety_margin=self.center_safety_margin,
+                        occluders=getattr(self, "_center_occluders", ()),
+                    )
+                    if safe
+                    else {}
+                )
                 if any(
                     bool(desired.get(side)) != bool(win.winfo_viewable())
                     or (side in desired and desired[side] != self._panel_geometry.get(side))

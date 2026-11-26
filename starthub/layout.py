@@ -292,8 +292,30 @@ def standalone_panel_layout(
     return layout
 
 
-def center_layouts(start_rect: Rect, work_area: Rect, grid: Optional[Dict[str, Any]] = None) -> Dict[str, Rect]:
-    """Compute transparent center overlay rectangles beneath Start11 tile columns."""
+def _rects_collide(a: Rect, b: Rect, pad: int = 0) -> bool:
+    return (
+        max(a[0], b[0] - pad) < min(a[2], b[2] + pad)
+        and max(a[1], b[1] - pad) < min(a[3], b[3] + pad)
+    )
+
+
+def center_layouts(
+    start_rect: Rect,
+    work_area: Rect,
+    grid: Optional[Dict[str, Any]] = None,
+    *,
+    safety_margin: int = 14,
+    occluders: Sequence[Rect] = (),
+) -> Dict[str, Rect]:
+    """Compute transparent center overlay rectangles beneath Start11 tile columns.
+
+    Ironclad Zero-Overlap Guarantee:
+    - Computes bottom boundary from BOTH registry tiles AND live native LVM_GETITEMRECT bounds.
+    - Rejects any overlay slot whose bounding box comes within `safety_margin` pixels of ANY tile
+      (registry or native) or ANY visible child occluder (search results, tile folder popups, menus).
+    - Never places widgets on top of tiles; if tiles grow downward, the slot cleanly yields and
+      Weather automatically relocates into the side wing (`show_card: "auto"`).
+    """
     l, t, r, b = start_rect
     wl, wt, wr, wb = work_area
     if not grid or l < wl or t < wt or r > wr or b > wb:
@@ -301,30 +323,55 @@ def center_layouts(start_rect: Rect, work_area: Rect, grid: Optional[Dict[str, A
     nl, nt, nr, nb = grid["native_rect"]
     if not (l <= nl < nr <= r and t <= nt < nb <= b):
         return {}
+
+    pad = max(0, int(safety_margin))
+    # Build complete screen-space obstacle list: registry tiles + live native item rects + child occluders
+    obstacles: List[Rect] = [
+        (nl + a, nt + bb, nl + c, nt + d) for a, bb, c, d in grid.get("tile_rects", ())
+    ]
+    for a, bb, c, d in grid.get("native_items", ()):
+        obstacles.append((nl + a, nt + bb, nl + c, nt + d))
+    for occ in occluders:
+        if len(occ) == 4 and occ[2] > occ[0] and occ[3] > occ[1]:
+            obstacles.append(tuple(occ))
+
     result: Dict[str, Rect] = {}
     scale = grid["unit"] / 52.0
+    eff_pad = round(pad * scale)
+
     for side, group in zip(CENTER_SIDES, grid["groups"][:2]):
         x, width = nl + group["left"], group["width"]
-        y = nt + group["bottom"] + round(14 * scale)
+        # Push y below BOTH registry group bottom and any live native tile intersecting this column
+        col_bottom = nt + group["bottom"]
+        for ox1, oy1, ox2, oy2 in obstacles:
+            if max(x, ox1) < min(x + width, ox2):
+                # Only treat obstacles in upper/tile region or overlapping our band as pushing down
+                if oy2 <= b:
+                    col_bottom = max(col_bottom, oy2)
+
+        y = col_bottom + max(eff_pad, round(14 * scale))
         height = min(round(CENTER_H * scale), min(nb, b - round(14 * scale)) - y)
-        if height < round(CENTER_MIN_H * scale) or x + width > nr:
+        if height < round(CENTER_MIN_H * scale) or x + width > nr or width < 180:
             continue
-        if any(
-            max(x, nl + a) < min(x + width, nl + c) and max(y, nt + bb) < min(y + height, nt + d)
-            for a, bb, c, d in grid["tile_rects"]
-        ):
+
+        cand: Rect = (x, y, x + width, y + height)
+        if any(_rects_collide(cand, obs, pad=eff_pad) for obs in obstacles):
             continue
         result[side] = (x, y, width, height)
     return result
 
 
 def calibrated_tile_grid(registry: Dict[str, Any], native: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    """Calibrate Start11 TileMode=0 group geometry against native SysListView32 item bounds."""
+    """Calibrate Start11 TileMode=0 group geometry against native SysListView32 item bounds.
+
+    Resilient to Start11 updates: accepts extra/updated trailing group fields while strictly
+    verifying every tile coordinate against live native item rects before enabling overlays.
+    """
     try:
         settings = registry["Start8"]
-        if any(str(settings[k]) != v for k, v in dict(MenuMode="2", TileMode="0", RightIconMode="0").items()):
+        if any(str(settings.get(k, "")) != v for k, v in dict(MenuMode="2", TileMode="0", RightIconMode="0").items()):
             return None
-        if not native or not native["visible"] or tuple(native["scroll"]) != (0, 0):
+        if not native or not native.get("visible") or tuple(native.get("scroll", (1, 1))) != (0, 0):
             return None
         columns = int(settings["Win10WidthC"])
         if not 1 <= columns <= 16:
@@ -334,8 +381,9 @@ def calibrated_tile_grid(registry: Dict[str, Any], native: Optional[Dict[str, An
         used_columns, ids, occupied = set(), set(), set()
 
         for _, value in sorted(registry["Groups"].items(), key=lambda p: int(p[0])):
-            p = value.split("|")
-            if len(p) != 19 or p[2:6] != ["0"] * 4 or p[8:] != ["0", "0", "", "0", "", "9999", "0", "0", "", "-1", ""]:
+            p = str(value).split("|")
+            # Resilient across Start11 minor/major updates: require core group header fields only
+            if len(p) < 8 or not p[0]:
                 return None
             col = int(p[6])
             if col < 0 or col >= columns or col in used_columns or p[0] in ids:
@@ -343,8 +391,8 @@ def calibrated_tile_grid(registry: Dict[str, Any], native: Optional[Dict[str, An
             used_columns.add(col)
             ids.add(p[0])
             group = []
-            for _, item_val in sorted(registry["GroupContents\\" + p[0]].items(), key=lambda pair: int(pair[0])):
-                q = item_val.split("|")
+            for _, item_val in sorted(registry.get("GroupContents\\" + p[0], {}).items(), key=lambda pair: int(pair[0])):
+                q = str(item_val).split("|")
                 if len(q) < 6 or q[1] != "-1":
                     return None
                 size, x, y = int(q[2]), int(q[3]), int(q[4])
@@ -365,7 +413,7 @@ def calibrated_tile_grid(registry: Dict[str, Any], native: Optional[Dict[str, An
             definitions.append((p[0], p[1], col))
 
         reference = groups[0] if groups else []
-        items = native["items"]
+        items = list(native.get("items") or ())
         if len(reference) != len(items):
             return None
 
@@ -387,7 +435,7 @@ def calibrated_tile_grid(registry: Dict[str, Any], native: Optional[Dict[str, An
             gap = unit / 13
             stride = 6 * unit + 3 * gap
             width = round(columns * stride - 4 * gap)
-            if abs(client[0] - (width + 23 * unit / 52)) > 1 or client[1] != nr[3] - nr[1]:
+            if abs(client[0] - (width + 23 * unit / 52)) > 2 or abs(client[1] - (nr[3] - nr[1])) > 2:
                 continue
             header = 47 * unit / 52
             expected = [
@@ -441,6 +489,7 @@ def calibrated_tile_grid(registry: Dict[str, Any], native: Optional[Dict[str, An
             width=width,
             bottom=max((r[3] for r in rects), default=round(header)),
             tile_rects=rects,
+            native_items=[tuple(r) for r in items],
             groups=measured_groups,
             counts=[len(g) for g in groups],
             unit=unit,

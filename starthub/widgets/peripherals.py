@@ -197,7 +197,7 @@ def draw_peripherals_card(
         bar_x1 = (bx1 + 10) * S
         bar_y1 = (ty2 - 8) * S
         bar_w = max(8 * S, (bx2 - bx1 - 20) * S)
-        ctx.draw.rounded_rectangle((bar_x1, bar_y1, bar_x1 + bar_w, bar_y1 + 4 * S), radius=2 * S, fill=(22, 24, 30, 255))
+        ctx.draw.rounded_rectangle((bar_x1, bar_y1, bar_x1 + bar_w, bar_y1 + 4 * S), radius=2 * S, fill=ctx.theme.track_bg)
         if active and pct > 0:
             fw = max(4 * S, int(bar_w * min(100, pct) / 100.0))
             ctx.draw.rounded_rectangle((bar_x1, bar_y1, bar_x1 + fw, bar_y1 + 4 * S), radius=2 * S, fill=(*col, 255))
@@ -223,7 +223,7 @@ def draw_bt_drawer(
     ctx.draw.rounded_rectangle(
         (x1 * S, y1 * S, x2 * S, y2 * S),
         radius=16 * S,
-        fill=(22, 25, 34, 252),
+        fill=(*ctx.theme.panel_rgb, 252),
         outline=(*bt_col, 255),
         width=2 * S,
     )
@@ -236,15 +236,16 @@ def draw_bt_drawer(
     ctx.draw.rounded_rectangle(
         (tx1 * S, ty1 * S, (x2 - 44) * S, (ty1 + 28) * S),
         radius=8 * S,
-        fill=(*bt_col, 255) if bt_on else (55, 60, 72, 255),
+        fill=(*bt_col, 255) if bt_on else ctx.theme.track_bg,
     )
     rad_txt = ctx.i18n.t("peripherals.bt_on" if bt_on else "peripherals.bt_off")
-    ctx.draw.text(((tx1 + 12) * S, (ty1 + 5) * S), rad_txt, font=ctx.font(13, "bold"), fill=(255, 255, 255, 255))
+    rad_ink = (255, 255, 255, 255) if bt_on else ctx.theme.text_primary
+    ctx.draw.text(((tx1 + 12) * S, (ty1 + 5) * S), rad_txt, font=ctx.font(13, "bold"), fill=rad_ink)
     ctx.add_spot(tx1, ty1, x2 - 44, ty1 + 28, on_toggle_radio, None, "bt_toggle_rad")
 
     cx_x, cy_x = (x2 - 24) * S, (y1 + 25) * S
-    ctx.draw.line([(cx_x - 5 * S, cy_x - 5 * S), (cx_x + 5 * S, cy_x + 5 * S)], fill=(190, 198, 215, 255), width=2 * S)
-    ctx.draw.line([(cx_x - 5 * S, cy_x + 5 * S), (cx_x + 5 * S, cy_x - 5 * S)], fill=(190, 198, 215, 255), width=2 * S)
+    ctx.draw.line([(cx_x - 5 * S, cy_x - 5 * S), (cx_x + 5 * S, cy_x + 5 * S)], fill=ctx.theme.text_secondary, width=2 * S)
+    ctx.draw.line([(cx_x - 5 * S, cy_x + 5 * S), (cx_x + 5 * S, cy_x - 5 * S)], fill=ctx.theme.text_secondary, width=2 * S)
     ctx.add_spot(x2 - 38, y1 + 10, x2 - 10, y1 + 40, on_close, None, "bt_close")
 
     ry = y1 + 52
