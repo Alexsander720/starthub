@@ -35,10 +35,10 @@ jobs:
           Copy-Item "README.md" "dist\StartHub\README.md" -Force
           Copy-Item "LICENSE" "dist\StartHub\LICENSE" -Force
           Copy-Item -Recurse "examples" "dist\StartHub\examples" -Force
-          $zipPath = "dist\StartHub-$tag-win64-portable.zip"
+          $zipPath = "dist\StartHub-v$tag-win64-portable.zip"
           Compress-Archive -Path "dist\StartHub\*" -DestinationPath $zipPath -Force
           $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
-          "$hash  StartHub-$tag-win64-portable.zip" | Out-File -Encoding ascii "$zipPath.sha256"
+          "$hash  StartHub-v$tag-win64-portable.zip" | Out-File -Encoding ascii "$zipPath.sha256"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
