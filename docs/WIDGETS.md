@@ -11,7 +11,7 @@ All **Tier 1** widgets work out of the box with **zero API keys**. All **Tier 2*
 2. [Android Phone Hub — ADB, Wi-Fi ADB, scrcpy, Photos & SMS/2FA (`phone_adb`)](#2-android-phone-hub--adb-wi-fi-adb-scrcpy-photos--sms2fa-phone_adb)
 3. [EcoFlow Power Station — DELTA 3 / DELTA 2 Cloud MQTT & State File (`ecoflow`)](#3-ecoflow-power-station--delta-3--delta-2-cloud-mqtt--state-file-ecoflow)
 4. [AI Agent Quotas, Budgets & Custom JSON Cards (`custom_json`)](#4-ai-agent-quotas-budgets--custom-json-cards-custom_json)
-5. [Philips Hue Smart Lights (`philips_hue`)](#5-philips-hue-smart-lights-philips_hue)
+5. [Smart Lights — Philips Hue, Home Assistant & WLED (`philips_hue`)](#5-smart-lights--philips-hue-home-assistant--wled-philips_hue)
 6. [Tasks & Todoist (`tasks` / `todoist`)](#6-tasks--todoist-tasks--todoist)
 7. [Spotify Liked Songs Heart (`spotify_like`)](#7-spotify-liked-songs-heart-spotify_like)
 8. [Start11 Tile Pack Switcher (`tile_switcher`)](#8-start11-tile-pack-switcher-tile_switcher)
@@ -320,34 +320,65 @@ Register-ScheduledTask -TaskName "StartHub-AI-Quotas" -Action $Action -Trigger $
 
 ---
 
-## 5. Philips Hue Smart Lights (`philips_hue`)
+## 5. Smart Lights — Philips Hue, Home Assistant & WLED (`philips_hue`)
 
-100% local LAN HTTPS control — zero Hue cloud latency, 10-step clickable dimmer bar, and up to 4 room/light tiles.
+The Smart Lights card isn't limited to Philips Hue! Switch `"backend"` between **3 built-in local backends** — displays **1–4 light/switch tiles** (automatically switches from a 1×2 row to a 2×2 grid for 3–4 devices) + a 10-step dimmer bar. **Left-Click** toggles a light; **Right-Click** any tile switches the bottom dimmer bar to that room/light.
 
-### 1-Click Setup in GUI Settings (Recommended)
+### Option A — Home Assistant (`backend: "home_assistant"`) — Works with ANY Smart Home Brand!
+Controls **Xiaomi / Yeelight, Tuya / Smart Life, Aqara, IKEA Tradfri, TP-Link Tapo/Kasa, Govee, Nanoleaf, LIFX, Zigbee2MQTT, ESPHome, Matter**, and smart plugs/switches!
 
-1. Open **Tray → Settings → Integrations (Tier 2) → Philips Hue**.
-2. Click **Find Bridge** (queries mDNS/discovery, or type your Bridge LAN IP such as `192.168.1.50`).
-3. Walk over and press the **physical round Link button** on top of your Philips Hue Bridge.
-4. Within 30 seconds, click **Press Link & Pair** — StartHub receives and fills in your local `app_key` automatically.
-5. Click **Load Rooms & Lights**, check up to 4 rooms/lights you want on your card, then click **Apply & Save**!
-
-### Manual `config.json` Equivalent
+1. In Home Assistant, click your Profile (bottom-left) → **Security → Long-Lived Access Tokens → Create Token**.
+2. Store it safely: `setx HA_TOKEN "your_long_lived_token"` (or paste in **Settings → Integrations → Smart Lights**).
+3. Select **Backend = `home_assistant`**, enter **HA URL** (e.g. `http://homeassistant.local:8123` or `http://192.168.1.20:8123`) and **HA Token**, then click **Load Lights** — check up to 4 `light.*` / `switch.*` entities and click **Apply & Save**!
 
 ```json
 "philips_hue": {
   "enabled": true,
+  "backend": "home_assistant",
+  "ha_url": "http://homeassistant.local:8123",
+  "ha_token": "${HA_TOKEN}",
+  "targets": [
+    { "id": "light.office_ceiling", "label": "Office",      "icon": "bulb",    "dimmer": true },
+    { "id": "light.monitor_strip",  "label": "Monitor Bar", "icon": "monitor", "dimmer": false },
+    { "id": "switch.desk_fan",      "label": "Desk Fan",    "icon": "monitor", "dimmer": false }
+  ]
+}
+```
+
+### Option B — Philips Hue Bridge (`backend: "hue"`, Local LAN HTTPS)
+1. Open **Tray → Settings → Integrations (Tier 2) → Smart Lights** with **Backend = `hue`**.
+2. Click **Find Hue** (or enter your Bridge LAN IP such as `192.168.1.50`).
+3. Press the **physical round Link button** on top of your Hue Bridge, then click **Pair Hue** within 30 seconds.
+4. Click **Load Lights**, check up to 4 rooms/lights, and click **Apply & Save**!
+
+```json
+"philips_hue": {
+  "enabled": true,
+  "backend": "hue",
   "bridge_ip": "192.168.1.50",
   "app_key": "${HUE_APP_KEY}",
   "poll_interval_sec": 8.0,
   "targets": [
-    { "id": "1", "kind": "groups", "label": "Office Light", "icon": "bulb", "dimmer": true },
+    { "id": "1", "kind": "groups", "label": "Office Light", "icon": "bulb",    "dimmer": true },
     { "id": "2", "kind": "lights", "label": "Monitor Bar",  "icon": "monitor", "dimmer": false }
   ]
 }
 ```
 
-- Set `"dimmer": true` on the target you want controlled by the bottom 10-step brightness bar.
+### Option C — WLED Wi-Fi LED Strips (`backend: "wled"`, Zero Tokens!)
+Great for desk/monitor LED strips running [WLED](https://kno.wled.ge/) — zero hub, zero API key:
+
+```json
+"philips_hue": {
+  "enabled": true,
+  "backend": "wled",
+  "bridge_ip": "192.168.1.60",
+  "targets": [
+    { "id": "192.168.1.60", "kind": "wled", "label": "Monitor LED", "icon": "monitor", "dimmer": true },
+    { "id": "192.168.1.61", "kind": "wled", "label": "Desk Strip",  "icon": "bulb",    "dimmer": false }
+  ]
+}
+```
 
 ---
 

@@ -101,7 +101,11 @@ class HubRenderer:
             elif wid == "philips_hue":
                 if photos_expanded and side == "left":
                     continue
-                specs.append(CardSpec("philips_hue", min_height=124, preferred_height=134, expandable=True, max_height=156))
+                n_targets = len((snapshot.get("hue") or {}).get("targets") or [])
+                if n_targets > 2:
+                    specs.append(CardSpec("philips_hue", min_height=172, preferred_height=184, expandable=True, max_height=208))
+                else:
+                    specs.append(CardSpec("philips_hue", min_height=124, preferred_height=134, expandable=True, max_height=156))
             elif wid == "ecoflow":
                 specs.append(CardSpec("ecoflow", min_height=208, preferred_height=214, expandable=False))
             elif wid == "custom_json":

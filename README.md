@@ -115,7 +115,7 @@ Full installation and troubleshooting guide: **[docs/SETUP.md](docs/SETUP.md)**.
 | Widget | What it does |
 |---|---|
 | **EcoFlow Power Station** | Live **DELTA 3 / DELTA 2** Cloud MQTT (TLS 8883 + Protobuf/JSON) or state-file telemetry: Grid Bypass vs Blackout alerts, 5-segment SoC, Input/Output/Backup runtime, and direct buttons (Charge Limit, USB, 12V DC, Beep). |
-| **Philips Hue** | Local LAN HTTPS control with **1-click Bridge discovery & pairing** inside GUI Settings + 10-step dimmer bar. |
+| **Smart Lights (Hue / HA / WLED)** | Universal local control for **Philips Hue** (1-click Bridge discovery & pairing), **Home Assistant** (Xiaomi/Yeelight, Tuya, Aqara, IKEA, Tapo, Govee, Zigbee), and **WLED** LED strips — 1–4 tiles + Right-Click dimmer selection. |
 | **Android Phone Hub (ADB)** | Sleek vector chassis (or custom PNG), battery pill, 1-click `scrcpy` screen mirror, instant phone screenshot straight to Windows clipboard (`Ctrl+V`), collapsible recent photos + gallery modal, and opt-in SMS/2FA OTP bar. |
 | **Custom JSON Cards** | Universal widget supporting **`columns`**, **`hero`**, and **`list`** layouts from any local JSON file or `localhost` URL — includes ready-to-run scripts in [`examples/custom_json/`](examples/custom_json/). |
 | **Start11 Tile Switcher** | Atomic switcher for user-created Start11 tile packs with automatic `.reg` backup & rollback. |
@@ -127,7 +127,7 @@ Full installation and troubleshooting guide: **[docs/SETUP.md](docs/SETUP.md)**.
 </div>
 
 Step-by-step setup guides:
-- **[docs/WIDGETS.md](docs/WIDGETS.md)** ([Русская версия](docs/WIDGETS.ru.md)) — complete walkthroughs for **[Android Phone Hub (ADB + Wi-Fi + scrcpy + SMS/2FA)](docs/WIDGETS.md#2-android-phone-hub--adb-wi-fi-adb-scrcpy-photos--sms2fa-phone_adb)**, **[EcoFlow DELTA 3/2 MQTT](docs/WIDGETS.md#3-ecoflow-power-station--delta-3--delta-2-cloud-mqtt--state-file-ecoflow)**, **[AI Agent Quotas & Budget Custom JSON](docs/WIDGETS.md#4-ai-agent-quotas-budgets--custom-json-cards-custom_json)**, **[Philips Hue](docs/WIDGETS.md#5-philips-hue-smart-lights-philips_hue)**, **[Todoist](docs/WIDGETS.md#6-tasks--todoist-tasks--todoist)**, **[Spotify Heart](docs/WIDGETS.md#7-spotify-liked-songs-heart-spotify_like)**, and **[Start11 Tile Packs](docs/WIDGETS.md#8-start11-tile-pack-switcher-tile_switcher)**.
+- **[docs/WIDGETS.md](docs/WIDGETS.md)** ([Русская версия](docs/WIDGETS.ru.md)) — complete walkthroughs for **[Android Phone Hub (ADB + Wi-Fi + scrcpy + SMS/2FA)](docs/WIDGETS.md#2-android-phone-hub--adb-wi-fi-adb-scrcpy-photos--sms2fa-phone_adb)**, **[EcoFlow DELTA 3/2 MQTT](docs/WIDGETS.md#3-ecoflow-power-station--delta-3--delta-2-cloud-mqtt--state-file-ecoflow)**, **[AI Agent Quotas & Budget Custom JSON](docs/WIDGETS.md#4-ai-agent-quotas-budgets--custom-json-cards-custom_json)**, **[Smart Lights (Hue / HA / WLED)](docs/WIDGETS.md#5-smart-lights--philips-hue-home-assistant--wled-philips_hue)**, **[Todoist](docs/WIDGETS.md#6-tasks--todoist-tasks--todoist)**, **[Spotify Heart](docs/WIDGETS.md#7-spotify-liked-songs-heart-spotify_like)**, and **[Start11 Tile Packs](docs/WIDGETS.md#8-start11-tile-pack-switcher-tile_switcher)**.
 - **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** — themes, custom colors, GUI builders & Zero-Overlap protection · **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)** — build your own Python widget.
 
 ---

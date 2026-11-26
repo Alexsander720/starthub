@@ -135,8 +135,11 @@
     },
     "philips_hue": {
       "enabled": false,
+      "backend": "hue",
       "bridge_ip": "",
       "app_key": "${HUE_APP_KEY}",
+      "ha_url": "",
+      "ha_token": "${HA_TOKEN}",
       "poll_interval_sec": 8.0,
       "targets": [
         {

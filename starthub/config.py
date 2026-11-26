@@ -245,8 +245,11 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         },
         "philips_hue": {
             "enabled": False,
+            "backend": "hue",  # "hue" | "home_assistant" | "wled"
             "bridge_ip": "",
             "app_key": "",
+            "ha_url": "",
+            "ha_token": "",
             "poll_interval_sec": 8.0,
             "targets": [
                 {"id": "1", "kind": "groups", "label": "Desk Light", "icon": "bulb", "dimmer": True},

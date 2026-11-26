@@ -33,7 +33,7 @@ from .config import (
     save_config_patch,
 )
 from .doctor import format_diagnostics, run_diagnostics
-from .providers.hue import discover_hue_bridges, fetch_hue_catalog, pair_hue_bridge
+from .providers.hue import discover_hue_bridges, fetch_ha_catalog, fetch_hue_catalog, pair_hue_bridge
 from .providers.weather import geocode_city
 from .surface import IS_WINDOWS, copy_text_to_clipboard
 from .theme import MULTI_ACCENT_ROLES, THEME_PRESETS
@@ -50,7 +50,7 @@ WIDGET_META: Dict[str, tuple[str, str, str]] = {
     "focus_timer": ("Focus / Pomodoro Timer", "Tier 1", "focus_timer"),
     "calendar_card": ("Monthly Calendar", "Tier 1", "calendar"),
     "quick_actions": ("Quick Actions Bar", "Tier 1", "quick_actions"),
-    "philips_hue": ("Philips Hue Lights", "Tier 2", "philips_hue"),
+    "philips_hue": ("Smart Lights (Hue / HA / WLED)", "Tier 2", "philips_hue"),
     "phone_adb": ("Android Phone Hub (ADB)", "Tier 2", "phone_adb"),
     "ecoflow": ("EcoFlow Power Station", "Tier 2", "ecoflow"),
     "custom_json": ("Custom JSON Cards", "Tier 2", "custom_json"),
@@ -741,22 +741,33 @@ class SettingsWindow:
         ef = widgets["ecoflow"]
         ph = widgets["phone_adb"]
 
-        sec_h = self._section(self.tab_integrations, "Philips Hue (1-Click Discovery, Pair & Room Picker)")
+        sec_h = self._section(self.tab_integrations, "Smart Lights — Philips Hue / Home Assistant (Xiaomi, Tuya, IKEA, Tapo...) / WLED")
+        self.var_hue_backend = tk.StringVar(value=str(hue.get("backend", "hue")))
         self.var_hue_ip = tk.StringVar(value=str(hue.get("bridge_ip", "")))
         self.var_hue_key = tk.StringVar(value=str(hue.get("app_key", "")))
+        self.var_ha_url = tk.StringVar(value=str(hue.get("ha_url", "")))
+        self.var_ha_token = tk.StringVar(value=str(hue.get("ha_token", "")))
         self.hue_status = tk.StringVar(value="")
 
-        rh1 = self._row(sec_h)
-        tk.Label(rh1, text="Bridge IP:", fg=FG_MAIN, bg=BG_CARD, width=11, anchor="w").pack(side="left")
-        self._entry(rh1, self.var_hue_ip, width=16).pack(side="left", padx=(0, 6))
-        tk.Button(rh1, text="Find Bridge", bg=BG_INPUT, fg=FG_MAIN, relief="flat", padx=8, command=self._hue_discover).pack(side="left", padx=3)
-        tk.Button(rh1, text="Press Link & Pair", bg="#2563EB", fg="white", relief="flat", padx=8, command=self._hue_pair).pack(side="left", padx=3)
-        tk.Button(rh1, text="Load Rooms & Lights", bg=BG_INPUT, fg=FG_MAIN, relief="flat", padx=8, command=self._hue_load_rooms).pack(side="left", padx=3)
+        rh0 = self._row(sec_h)
+        tk.Label(rh0, text="Backend:", fg=FG_MAIN, bg=BG_CARD, width=11, anchor="w").pack(side="left")
+        ttk.Combobox(rh0, textvariable=self.var_hue_backend, values=("hue", "home_assistant", "wled"), width=15, state="readonly").pack(side="left", padx=(0, 8))
+        tk.Label(rh0, text="Bridge / WLED IP:", fg=FG_MAIN, bg=BG_CARD).pack(side="left")
+        self._entry(rh0, self.var_hue_ip, width=15).pack(side="left", padx=(4, 6))
+        tk.Button(rh0, text="Find Hue", bg=BG_INPUT, fg=FG_MAIN, relief="flat", padx=7, command=self._hue_discover).pack(side="left", padx=2)
+        tk.Button(rh0, text="Pair Hue", bg="#2563EB", fg="white", relief="flat", padx=7, command=self._hue_pair).pack(side="left", padx=2)
+        tk.Button(rh0, text="Load Lights", bg=BG_INPUT, fg=FG_MAIN, relief="flat", padx=7, command=self._hue_load_rooms).pack(side="left", padx=2)
 
         rh2 = self._row(sec_h)
-        tk.Label(rh2, text="App Key:", fg=FG_MAIN, bg=BG_CARD, width=11, anchor="w").pack(side="left")
-        self._entry(rh2, self.var_hue_key, width=30).pack(side="left", padx=(0, 8))
-        tk.Label(rh2, textvariable=self.hue_status, fg=FG_MUTED, bg=BG_CARD, font=("Segoe UI", 9)).pack(side="left")
+        tk.Label(rh2, text="Hue Key:", fg=FG_MAIN, bg=BG_CARD, width=11, anchor="w").pack(side="left")
+        self._entry(rh2, self.var_hue_key, width=22).pack(side="left", padx=(0, 8))
+        tk.Label(rh2, text="HA URL:", fg=FG_MAIN, bg=BG_CARD).pack(side="left")
+        self._entry(rh2, self.var_ha_url, width=24).pack(side="left", padx=(4, 6))
+
+        rh3 = self._row(sec_h)
+        tk.Label(rh3, text="HA Token:", fg=FG_MAIN, bg=BG_CARD, width=11, anchor="w").pack(side="left")
+        self._entry(rh3, self.var_ha_token, width=30).pack(side="left", padx=(0, 8))
+        tk.Label(rh3, textvariable=self.hue_status, fg=FG_MUTED, bg=BG_CARD, font=("Segoe UI", 9)).pack(side="left")
 
         self.hue_picker_frame = tk.Frame(sec_h, bg=BG_CARD)
         self.hue_picker_frame.pack(fill="x", pady=(4, 0))
@@ -848,6 +859,36 @@ class SettingsWindow:
         threading.Thread(target=_worker, daemon=True).start()
 
     def _hue_load_rooms(self) -> None:
+        backend = self.var_hue_backend.get().strip().lower()
+        if backend == "home_assistant":
+            ha_url = self.var_ha_url.get().strip()
+            ha_tok = self.var_ha_token.get().strip() or self.var_hue_key.get().strip()
+            if not ha_url or not ha_tok:
+                self.hue_status.set("Enter HA URL and HA Token first")
+                return
+            self.hue_status.set("Loading Home Assistant lights & switches...")
+
+            def _worker_ha():
+                cat = fetch_ha_catalog(ha_url, ha_tok)
+                def _done():
+                    self._hue_catalog = cat
+                    self._render_hue_picker()
+                    self.hue_status.set(f"Loaded {len(cat)} HA entities — check up to 4" if cat else "No light/switch entities found")
+                self._safe_ui(_done)
+
+            threading.Thread(target=_worker_ha, daemon=True).start()
+            return
+
+        if backend == "wled":
+            ip = self.var_hue_ip.get().strip()
+            if not ip:
+                self.hue_status.set("Enter WLED LAN IP above")
+                return
+            self._hue_catalog = [{"id": ip, "kind": "wled", "label": "WLED Strip", "icon": "monitor", "dimmer": True}]
+            self._render_hue_picker()
+            self.hue_status.set(f"Added WLED strip ({ip}) — click Apply & Save")
+            return
+
         ip = self.var_hue_ip.get().strip()
         key = self.var_hue_key.get().strip()
         if not ip or not key:
@@ -858,8 +899,6 @@ class SettingsWindow:
         def _worker():
             cat = fetch_hue_catalog(ip, key)
             def _done():
-                if not self.win.winfo_exists():
-                    return
                 self._hue_catalog = cat
                 self._render_hue_picker()
                 self.hue_status.set(f"Loaded {len(cat)} items — check up to 4 to display" if cat else "No rooms/lights returned")
@@ -879,7 +918,10 @@ class SettingsWindow:
             checked = (item["kind"], str(item["id"])) in existing or (not existing and idx < 2)
             v = tk.BooleanVar(value=checked)
             self._hue_selected_vars.append((item, v))
-            self._check(row, f"{item['label']} ({item['kind'][:-1]})", v).pack(side="left", padx=(0, 10))
+            kind_lbl = {"groups": "room", "lights": "light", "ha_light": "light", "ha_switch": "switch", "wled": "wled"}.get(
+                str(item.get("kind", "")), str(item.get("kind", ""))
+            )
+            self._check(row, f"{item['label']} ({kind_lbl})", v).pack(side="left", padx=(0, 10))
 
     # ------------------------------------------------------------------
     # Tab 6: Diagnostics & Updates
@@ -1011,8 +1053,11 @@ class SettingsWindow:
         w_patch["custom_json"]["cards"] = list(self._custom_cards)
         w_patch["philips_hue"].update(
             {
+                "backend": self.var_hue_backend.get().strip() or "hue",
                 "bridge_ip": self.var_hue_ip.get().strip(),
                 "app_key": self.var_hue_key.get().strip(),
+                "ha_url": self.var_ha_url.get().strip(),
+                "ha_token": self.var_ha_token.get().strip(),
                 "targets": hue_targets,
             }
         )

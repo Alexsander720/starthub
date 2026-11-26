@@ -528,6 +528,10 @@ class ProviderHub:
         if not self.demo:
             self.hue.command(key, action)
             return
+        if action == "select_dimmer":
+            self._demo_state["hue"]["dimmer_key"] = key
+            self._notify()
+            return
         for target in self._demo_state["hue"]["targets"]:
             if target["key"] == key:
                 if action == "toggle":

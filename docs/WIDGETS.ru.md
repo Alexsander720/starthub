@@ -11,7 +11,7 @@
 2. [Android-телефон — ADB, Wi-Fi ADB, scrcpy, авто-буфер фото и SMS/2FA (`phone_adb`)](#2-android-телефон--adb-wi-fi-adb-scrcpy-авто-буфер-фото-и-sms2fa-phone_adb)
 3. [EcoFlow DELTA 3 / DELTA 2 — Cloud MQTT и режим `state_file` (`ecoflow`)](#3-ecoflow-delta-3--delta-2--cloud-mqtt-и-режим-state_file-ecoflow)
 4. [Лимиты ИИ-агентов, трекер доходов и Custom JSON (`custom_json`)](#4-лимиты-ии-агентов-трекер-доходов-и-custom-json-custom_json)
-5. [Philips Hue — умный свет по локальной сети (`philips_hue`)](#5-philips-hue--умный-свет-по-локальной-сети-philips_hue)
+5. [Умный свет — Philips Hue, Home Assistant и WLED (`philips_hue`)](#5-умный-свет--philips-hue-home-assistant-и-wled-philips_hue)
 6. [Задачи и Todoist (`tasks` / `todoist`)](#6-задачи-и-todoist-tasks--todoist)
 7. [Сердечко «Любимые треки» Spotify (`spotify_like`)](#7-сердечко-любимые-треки-spotify-spotify_like)
 8. [Переключатель паков плиток Start11 (`tile_switcher`)](#8-переключатель-паков-плиток-start11-tile_switcher)
@@ -244,15 +244,50 @@ Register-ScheduledTask -TaskName "StartHub-AI-Quotas" -Action $Action -Trigger $
 
 ---
 
-## 5. Philips Hue — умный свет по локальной сети (`philips_hue`)
+## 5. Умный свет — Philips Hue, Home Assistant и WLED (`philips_hue`)
 
-100% локальное управление по LAN HTTPS без задержек облака + 10-шаговый диммер яркости.
+Карточка умного света **не привязана только к Philips Hue**! Выбирайте один из **3 встроенных локальных бэкендов** (`backend`), подключайте **от 1 до 4 комнат/ламп/розеток** (для 3–4 устройств автоматически включается компактная сетка 2×2) и управляйте яркостью 10-шаговым диммером. **ЛКМ** включает/выключает плитку, **ПКМ по любой плитке** переключает нижний диммер именно на эту лампу/комнату!
 
-1. Откройте **Трей → Настройки → Integrations (Tier 2) → Philips Hue**.
-2. Нажмите **Find Bridge** (или впишите локальный IP моста вручную).
-3. Нажмите **физическую круглую кнопку Link** на самом Philips Hue Bridge.
-4. В течение 30 секунд нажмите **Press Link & Pair** — StartHub сам получит и заполнит `app_key`.
-5. Нажмите **Load Rooms & Lights**, отметьте галочками до 4 комнат/ламп и нажмите **Apply & Save**!
+### Вариант А — Home Assistant (`backend: "home_assistant"`) — ЛЮБОЙ умный дом!
+Работает со всем, что подключено к Home Assistant: **Xiaomi / Yeelight, Tuya / Smart Life, Aqara, IKEA Tradfri, TP-Link Tapo/Kasa, Govee, Nanoleaf, LIFX, Zigbee2MQTT, ESPHome, Matter**, а также умные розетки и выключатели (`switch.*`).
+
+1. В Home Assistant откройте свой профиль (снизу слева) → **Безопасность → Долгосрочные токены доступа → Создать токен**.
+2. Сохраните токен: `setx HA_TOKEN "ваш_токен"` (или вставьте в **Настройки → Integrations → Smart Lights**).
+3. Выберите **Backend = `home_assistant`**, укажите **HA URL** (например `http://homeassistant.local:8123` или `http://<IP_СЕРВЕРА>:8123`) и **HA Token**, нажмите **Load Lights** — отметьте до 4 сущностей `light.*` / `switch.*` и нажмите **Apply & Save**!
+
+```json
+"philips_hue": {
+  "enabled": true,
+  "backend": "home_assistant",
+  "ha_url": "http://homeassistant.local:8123",
+  "ha_token": "${HA_TOKEN}",
+  "targets": [
+    { "id": "light.office_ceiling", "label": "Кабинет",    "icon": "bulb",    "dimmer": true },
+    { "id": "light.monitor_strip",  "label": "За экраном", "icon": "monitor", "dimmer": false },
+    { "id": "switch.desk_plug",     "label": "Розетка",    "icon": "monitor", "dimmer": false }
+  ]
+}
+```
+
+### Вариант Б — Philips Hue Bridge (`backend: "hue"`, локальный LAN HTTPS)
+1. Откройте **Трей → Настройки → Integrations (Tier 2) → Smart Lights** (**Backend = `hue`**).
+2. Нажмите **Find Hue** (или впишите локальный IP моста вручную).
+3. Нажмите **физическую круглую кнопку Link** на самом Philips Hue Bridge и в течение 30 секунд нажмите **Pair Hue** — `app_key` заполнится сам.
+4. Нажмите **Load Lights**, отметьте галочками до 4 комнат/ламп и нажмите **Apply & Save**!
+
+### Вариант В — WLED Wi-Fi ленты (`backend: "wled"`, вообще без токенов!)
+Идеально для подсветки за монитором или столом на прошивке [WLED](https://kno.wled.ge/) — не нужен ни хаб, ни токен, только локальный IP ленты:
+
+```json
+"philips_hue": {
+  "enabled": true,
+  "backend": "wled",
+  "bridge_ip": "<IP_WLED>",
+  "targets": [
+    { "id": "<IP_WLED>", "kind": "wled", "label": "Подсветка LED", "icon": "monitor", "dimmer": true }
+  ]
+}
+```
 
 ---
 

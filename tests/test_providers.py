@@ -15,7 +15,7 @@ from starthub.providers.ecoflow import (
     attach_ecoflow_rotating_log,
     logger as ecoflow_logger,
 )
-from starthub.providers.hue import is_valid_lan_ip
+from starthub.providers.hue import HueProvider, fetch_ha_catalog, is_valid_ha_url, is_valid_lan_ip
 from starthub.providers.weather import build_open_meteo_url, validate_open_meteo_payload
 from tools import scan_private, tile_switcher
 
@@ -27,6 +27,118 @@ def test_hue_lan_ip_validation():
     assert is_valid_lan_ip("8.8.8.8") is False
     assert is_valid_lan_ip("evil.example.com") is False
     assert is_valid_lan_ip("") is False
+    assert is_valid_ha_url("http://homeassistant.local:8123") is True
+    assert is_valid_ha_url("http://127.0.0.1:8123") is True
+    assert is_valid_ha_url("ftp://homeassistant.local") is False
+
+
+def test_smart_lights_home_assistant_and_wled_backends_and_4tile_render():
+    from PIL import Image, ImageDraw
+    from starthub.config import load_config
+    from starthub.i18n import I18n
+    from starthub.surface import FontBank
+    from starthub.theme import Theme
+    from starthub.widgets import RenderContext
+    from starthub.widgets.hue import draw_hue_card
+
+    class _FakeResp:
+        def __init__(self, payload):
+            self._payload = payload
+            self.content = b"ok"
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._payload
+
+    class _FakeHaSession:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, **kwargs):
+            self.calls.append(("GET", url, None))
+            return _FakeResp(
+                [
+                    {"entity_id": "light.office_ceiling", "attributes": {"friendly_name": "Office Ceiling"}},
+                    {"entity_id": "switch.desk_plug", "attributes": {"friendly_name": "Desk Plug"}},
+                    {"entity_id": "sensor.temp", "attributes": {"friendly_name": "Temp"}},
+                ]
+            )
+
+        def request(self, method, url, json=None, **kwargs):
+            self.calls.append((method, url, json))
+            if method == "GET" and url.endswith("/api/states/light.office_ceiling"):
+                return _FakeResp({"state": "on", "attributes": {"brightness": 191}})
+            if method == "GET" and url.endswith("/api/states/switch.desk_plug"):
+                return _FakeResp({"state": "off", "attributes": {}})
+            return _FakeResp({})
+
+    ha_sess = _FakeHaSession()
+    cat = fetch_ha_catalog("http://homeassistant.local:8123", "dummy_tok", session=ha_sess)
+    assert [c["id"] for c in cat] == ["light.office_ceiling", "switch.desk_plug"]
+
+    ha_prov = HueProvider(
+        {
+            "enabled": True,
+            "backend": "home_assistant",
+            "ha_url": "http://homeassistant.local:8123",
+            "ha_token": "dummy_tok",
+            "targets": [
+                {"id": "light.office_ceiling", "label": "Office", "icon": "bulb", "dimmer": True},
+                {"id": "switch.desk_plug", "label": "Plug", "icon": "monitor", "dimmer": False},
+            ],
+        },
+        I18n("en"),
+        session=ha_sess,
+    )
+    snap = ha_prov.poll_once()
+    assert snap["ready"] is True and len(snap["targets"]) == 2
+    assert snap["targets"][0]["on"] is True and snap["targets"][0]["bri"] >= 188
+    assert snap["targets"][1]["on"] is False
+    ha_prov._send_command(snap["targets"][0]["key"], 50)
+    assert any(c[0] == "POST" and "/api/services/light/turn_on" in c[1] and c[2]["brightness"] == 128 for c in ha_sess.calls)
+
+    class _FakeWledSession:
+        def __init__(self):
+            self.posts = []
+
+        def request(self, method, url, json=None, **kwargs):
+            if method == "POST":
+                self.posts.append((url, json))
+                return _FakeResp({"on": True, "bri": 200})
+            return _FakeResp({"on": True, "bri": 128})
+
+    wled_sess = _FakeWledSession()
+    wled_prov = HueProvider(
+        {
+            "enabled": True,
+            "backend": "wled",
+            "bridge_ip": "192.168.1.77",
+            "targets": [{"id": "192.168.1.77", "label": "Monitor Strip", "icon": "monitor", "dimmer": True}],
+        },
+        I18n("en"),
+        session=wled_sess,
+    )
+    wsnap = wled_prov.poll_once()
+    assert wsnap["ready"] is True and wsnap["targets"][0]["on"] is True
+    wled_prov._send_command(wsnap["targets"][0]["key"], "toggle")
+    assert wled_sess.posts == [("http://192.168.1.77/json/state", {"on": False})]
+
+    # 4-tile 2x2 grid renders cleanly in Fluent Light
+    theme = Theme.from_config(load_config(overrides={"theme": {"preset": "fluent_light"}}))
+    img = Image.new("RGBA", (832, 420), (*theme.panel_rgb, 255))
+    ctx = RenderContext(img=img, draw=ImageDraw.Draw(img), scale=2, theme=theme, fonts=FontBank(), i18n=I18n("en"), hover=None, hotspots=[], img_cache={})
+    four_state = {
+        "ready": True,
+        "dimmer_key": "k2",
+        "targets": [
+            {"key": f"k{i}", "label": f"Lamp {i}", "icon": "bulb" if i % 2 == 0 else "monitor", "on": i % 2 == 0, "bri": 180, "reachable": True, "dimmer": i == 0}
+            for i in range(4)
+        ],
+    }
+    draw_hue_card(ctx, (12, 12, 404, 198), four_state, on_command=lambda k, a: None)
+    assert len(ctx.hotspots) >= 14
 
 
 def test_custom_json_local_file_and_localhost_guard(tmp_path: Path):

@@ -64,7 +64,7 @@
 ## Опциональные модули (Tier 2)
 
 - **EcoFlow DELTA 3 / DELTA 2** — Cloud MQTT (TLS 8883 + Protobuf/JSON) с алертами `БЛЭКАУТ`, лимитом зарядки, USB/12V/Звук ([инструкция](docs/WIDGETS.ru.md#3-ecoflow-delta-3--delta-2--cloud-mqtt-и-режим-state_file-ecoflow)).
-- **Philips Hue** — локальный LAN HTTPS + автопоиск моста, привязка и выбор комнат в 1 клик ([инструкция](docs/WIDGETS.ru.md#5-philips-hue--умный-свет-по-локальной-сети-philips_hue)).
+- **Умный свет (Hue / Home Assistant / WLED)** — локальное управление **Philips Hue**, **Home Assistant** (Xiaomi/Yeelight, Tuya, Aqara, IKEA, Tapo, Govee, Zigbee) и Wi-Fi лентами **WLED** (1–4 плитки + диммер по ПКМ) ([инструкция](docs/WIDGETS.ru.md#5-умный-свет--philips-hue-home-assistant-и-wled-philips_hue)).
 - **Android Phone Hub (ADB)** — Wi-Fi ADB + экран `scrcpy`, авто-разблокировка, скриншот сразу в буфер Windows (`Ctrl+V`), галерея фото и опциональный бар SMS/2FA ([пошаговый гайд](docs/WIDGETS.ru.md#2-android-телефон--adb-wi-fi-adb-scrcpy-авто-буфер-фото-и-sms2fa-phone_adb)).
 - **Todoist** — синхронизация проектов и закрытие задач в 1 клик ([инструкция](docs/WIDGETS.ru.md#6-задачи-и-todoist-tasks--todoist)).
 - **Лимиты ИИ-агентов, трекеры и Custom JSON** — 3 макета (`columns`, `hero`, `list`) + готовые скрипты `ai_quotas_example.py` и `income_budget_example.py` в [`examples/custom_json/`](examples/custom_json/) ([гайд](docs/WIDGETS.ru.md#4-лимиты-ии-агентов-трекер-доходов-и-custom-json-custom_json)).
