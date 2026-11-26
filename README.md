@@ -126,7 +126,9 @@ Full installation and troubleshooting guide: **[docs/SETUP.md](docs/SETUP.md)**.
 <img src="docs/assets/ecoflow_focus.png" alt="EcoFlow DELTA 3 Grid AC Bypass vs Battery Blackout alert" width="88%">
 </div>
 
-Detailed widget setup: **[docs/WIDGETS.md](docs/WIDGETS.md)** · Build your own widget: **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)**.
+Step-by-step setup guides:
+- **[docs/WIDGETS.md](docs/WIDGETS.md)** ([Русская версия](docs/WIDGETS.ru.md)) — complete walkthroughs for **[Android Phone Hub (ADB + Wi-Fi + scrcpy + SMS/2FA)](docs/WIDGETS.md#2-android-phone-hub--adb-wi-fi-adb-scrcpy-photos--sms2fa-phone_adb)**, **[EcoFlow DELTA 3/2 MQTT](docs/WIDGETS.md#3-ecoflow-power-station--delta-3--delta-2-cloud-mqtt--state-file-ecoflow)**, **[AI Agent Quotas & Budget Custom JSON](docs/WIDGETS.md#4-ai-agent-quotas-budgets--custom-json-cards-custom_json)**, **[Philips Hue](docs/WIDGETS.md#5-philips-hue-smart-lights-philips_hue)**, **[Todoist](docs/WIDGETS.md#6-tasks--todoist-tasks--todoist)**, **[Spotify Heart](docs/WIDGETS.md#7-spotify-liked-songs-heart-spotify_like)**, and **[Start11 Tile Packs](docs/WIDGETS.md#8-start11-tile-pack-switcher-tile_switcher)**.
+- **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** — themes, custom colors, GUI builders & Zero-Overlap protection · **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)** — build your own Python widget.
 
 ---
 

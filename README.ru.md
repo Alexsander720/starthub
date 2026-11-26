@@ -57,18 +57,18 @@
 3. **Посмотреть демо за 10 секунд:** `.\.venv\Scripts\python.exe -m starthub --demo --preview`.
 4. **Запуск в фоне:** дважды кликните **`StartHub.cmd`**, нажмите **Win** или **`Alt+Space`**. Настройки — в меню иконки трея (**Настройки...**).
 
-Подробные гайды: **[docs/SETUP.md](docs/SETUP.md)** · **[docs/WIDGETS.md](docs/WIDGETS.md)** · **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)**.
+Подробные пошаговые гайды: **[docs/SETUP.md](docs/SETUP.md)** · **[docs/WIDGETS.ru.md](docs/WIDGETS.ru.md)** (телефон ADB/Wi-Fi/scrcpy, EcoFlow MQTT, лимиты ИИ-агентов, Hue, Todoist, Spotify) · **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** · **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)**.
 
 ---
 
 ## Опциональные модули (Tier 2)
 
-- **EcoFlow DELTA 3 / DELTA 2** — Cloud MQTT (TLS 8883 + Protobuf/JSON) с алертами `БЛЭКАУТ`, лимитом зарядки, USB/12V/Звук.
-- **Philips Hue** — локальный LAN HTTPS + автопоиск моста и привязка в 1 клик прямо из настроек.
-- **Android Phone Hub (ADB)** — экран `scrcpy`, скриншот телефона сразу в буфер Windows (`Ctrl+V`), галерея фото и опциональный бар SMS/2FA.
-- **Todoist** — синхронизация проектов и закрытие задач в 1 клик.
-- **Custom JSON** — 3 режима вёрстки (`columns`, `hero`, `list`) + готовые скрипты в [`examples/custom_json/`](examples/custom_json/).
-- **Start11 Tile Switcher** — переключение пользовательских паков плиток с автоматическим бекапом `.reg`.
+- **EcoFlow DELTA 3 / DELTA 2** — Cloud MQTT (TLS 8883 + Protobuf/JSON) с алертами `БЛЭКАУТ`, лимитом зарядки, USB/12V/Звук ([инструкция](docs/WIDGETS.ru.md#3-ecoflow-delta-3--delta-2--cloud-mqtt-и-режим-state_file-ecoflow)).
+- **Philips Hue** — локальный LAN HTTPS + автопоиск моста, привязка и выбор комнат в 1 клик ([инструкция](docs/WIDGETS.ru.md#5-philips-hue--умный-свет-по-локальной-сети-philips_hue)).
+- **Android Phone Hub (ADB)** — Wi-Fi ADB + экран `scrcpy`, авто-разблокировка, скриншот сразу в буфер Windows (`Ctrl+V`), галерея фото и опциональный бар SMS/2FA ([пошаговый гайд](docs/WIDGETS.ru.md#2-android-телефон--adb-wi-fi-adb-scrcpy-авто-буфер-фото-и-sms2fa-phone_adb)).
+- **Todoist** — синхронизация проектов и закрытие задач в 1 клик ([инструкция](docs/WIDGETS.ru.md#6-задачи-и-todoist-tasks--todoist)).
+- **Лимиты ИИ-агентов, трекеры и Custom JSON** — 3 макета (`columns`, `hero`, `list`) + готовые скрипты `ai_quotas_example.py` и `income_budget_example.py` в [`examples/custom_json/`](examples/custom_json/) ([гайд](docs/WIDGETS.ru.md#4-лимиты-ии-агентов-трекер-доходов-и-custom-json-custom_json)).
+- **Start11 Tile Switcher** — переключение пользовательских паков плиток с автоматическим бекапом `.reg` ([инструкция](docs/WIDGETS.ru.md#8-переключатель-паков-плиток-start11-tile_switcher)).
 
 <div align="center">
 <img src="docs/assets/ecoflow_focus.png" alt="EcoFlow DELTA 3 Байпас и Блэкаут" width="88%">

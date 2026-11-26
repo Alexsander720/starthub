@@ -57,18 +57,18 @@
 3. **Миттєвий перегляд демо:** `.\.venv\Scripts\python.exe -m starthub --demo --preview`.
 4. **Запуск у фоні:** двічі клікніть **`StartHub.cmd`**, натисніть **Win** або **`Alt+Space`**. Налаштування відкриваються через іконку в треї (**Налаштування...**).
 
-Детальна документація: **[docs/SETUP.md](docs/SETUP.md)** · **[docs/WIDGETS.md](docs/WIDGETS.md)** · **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)**.
+Детальна документація: **[docs/SETUP.md](docs/SETUP.md)** · **[docs/WIDGETS.md](docs/WIDGETS.md)** ([RU](docs/WIDGETS.ru.md)) · **[docs/CUSTOMIZATION.md](docs/CUSTOMIZATION.md)** · **[docs/CREATING_WIDGETS.md](docs/CREATING_WIDGETS.md)**.
 
 ---
 
 ## Опційні модулі (Tier 2)
 
-- **EcoFlow DELTA 3 / DELTA 2** — Cloud MQTT (TLS 8883 + Protobuf/JSON) із миттєвими алертами `БЛЕКАУТ`, лімітом зарядки, USB/12V/Звук.
-- **Philips Hue** — локальний LAN HTTPS + автопошук моста й прив’язка в 1 клік із налаштувань.
-- **Android Phone Hub (ADB)** — екран `scrcpy`, скріншот телефону одразу в буфер Windows (`Ctrl+V`), галерея фото та опційна панель SMS/2FA.
-- **Todoist** — синхронізація проєктів і закриття завдань у 1 клік.
-- **Custom JSON** — 3 готові макети (`columns`, `hero`, `list`) + скрипти-приклади у [`examples/custom_json/`](examples/custom_json/).
-- **Start11 Tile Switcher** — перемикання користувацьких паків плиток із бекапом `.reg`.
+- **EcoFlow DELTA 3 / DELTA 2** — Cloud MQTT (TLS 8883 + Protobuf/JSON) із миттєвими алертами `БЛЕКАУТ`, лімітом зарядки, USB/12V/Звук ([гайд](docs/WIDGETS.md#3-ecoflow-power-station--delta-3--delta-2-cloud-mqtt--state-file-ecoflow)).
+- **Philips Hue** — локальний LAN HTTPS + автопошук моста, прив’язка та вибір кімнат у 1 клік ([гайд](docs/WIDGETS.md#5-philips-hue-smart-lights-philips_hue)).
+- **Android Phone Hub (ADB)** — Wi-Fi ADB + екран `scrcpy`, скріншот телефону одразу в буфер Windows (`Ctrl+V`), галерея фото та опційна панель SMS/2FA ([покроковий гайд](docs/WIDGETS.md#2-android-phone-hub--adb-wi-fi-adb-scrcpy-photos--sms2fa-phone_adb)).
+- **Todoist** — синхронізація проєктів і закриття завдань у 1 клік ([гайд](docs/WIDGETS.md#6-tasks--todoist-tasks--todoist)).
+- **Ліміти ШІ-агентів, трекери та Custom JSON** — 3 готові макети (`columns`, `hero`, `list`) + скрипти `ai_quotas_example.py` і `income_budget_example.py` у [`examples/custom_json/`](examples/custom_json/) ([гайд](docs/WIDGETS.md#4-ai-agent-quotas-budgets--custom-json-cards-custom_json)).
+- **Start11 Tile Switcher** — перемикання користувацьких паків плиток із бекапом `.reg` ([гайд](docs/WIDGETS.md#8-start11-tile-pack-switcher-tile_switcher)).
 
 <div align="center">
 <img src="docs/assets/ecoflow_focus.png" alt="EcoFlow DELTA 3 Байпас і Блекаут" width="88%">
