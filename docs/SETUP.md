@@ -5,7 +5,7 @@ This guide covers installing and customizing StartHub on Windows 11 — with **S
 ## Prerequisites
 
 - **Windows 11** (64-bit)
-- **Portable EXE users:** No Python or Git needed — download `StartHub-v0.1.0-win64-portable.zip` from Releases and run `StartHub.exe`.
+- **Portable EXE users:** No Python or Git needed — download `StartHub-v0.1.1-win64-portable.zip` from Releases and run `StartHub.exe`.
 - **Source users:** Python 3.10+ (the installer can install Python 3.12 via `winget` automatically with `-InstallPython`).
 - **Start Menu compatibility:**
   - `trigger_mode: "auto"` (default) tracks **Start11** (`DV2ControlHost`) first, and automatically falls back to the **native Windows 11 Start Menu** (`StartMenuExperienceHost` + `DWMWA_CLOAKED`).

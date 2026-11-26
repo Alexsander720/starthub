@@ -26,15 +26,68 @@ jobs:
           python -m pytest -v
       - name: Build source release ZIP + SHA-256
         run: python tools/build_release.py
-      - name: Build portable Windows x64 executable ZIP + SHA-256
+      - name: Build portable Windows x64 executable
         shell: pwsh
         run: |
-          $tag = "${{ github.ref_name }}".TrimStart("v")
           pyinstaller --noconfirm --clean starthub.spec
           Copy-Item "config.example.json" "dist\StartHub\config.example.json" -Force
           Copy-Item "README.md" "dist\StartHub\README.md" -Force
           Copy-Item "LICENSE" "dist\StartHub\LICENSE" -Force
           Copy-Item -Recurse "examples" "dist\StartHub\examples" -Force
+          Copy-Item -Recurse "packs" "dist\StartHub\packs" -Force
+      - name: Smoke-test frozen StartHub.exe from isolated temp directory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $smokeRoot = Join-Path $env:RUNNER_TEMP "starthub-frozen-smoke"
+          if (Test-Path $smokeRoot) { Remove-Item -Recurse -Force $smokeRoot }
+          $appDir = Join-Path $smokeRoot "app"
+          $renderOut = Join-Path $smokeRoot "renders"
+          Copy-Item -Recurse "dist\StartHub" $appDir
+          $exe = Join-Path $appDir "StartHub.exe"
+          if (-not (Test-Path $exe)) { throw "StartHub.exe missing at $exe" }
+
+          # Run completely outside the repo working directory so source imports are impossible
+          Push-Location $smokeRoot
+          try {
+            $verOut = (& $exe --version 2>&1 | Out-String).Trim()
+            if ($LASTEXITCODE -ne 0) { throw "StartHub.exe --version failed (exit $LASTEXITCODE): $verOut" }
+            Write-Host "VERSION: $verOut"
+            if ($verOut -notmatch "StartHub\s+\d+\.\d+\.\d+") { throw "Unexpected --version output: $verOut" }
+
+            $docOut = (& $exe --doctor 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0) { throw "StartHub.exe --doctor failed (exit $LASTEXITCODE): $docOut" }
+            Write-Host $docOut
+            if ($docOut -notmatch "StartHub Diagnostics" -or $docOut -notmatch "Pillow=OK") {
+              throw "Unexpected --doctor output"
+            }
+
+            $renOut = (& $exe --demo --render-test $renderOut 2>&1 | Out-String)
+            if ($LASTEXITCODE -ne 0) { throw "StartHub.exe --demo --render-test failed (exit $LASTEXITCODE): $renOut" }
+            Write-Host $renOut
+
+            foreach ($png in @("left_wing.png", "right_wing.png", "center_overlay.png")) {
+              $p = Join-Path $renderOut $png
+              if (-not (Test-Path $p)) { throw "Missing rendered PNG: $p" }
+              $sz = (Get-Item $p).Length
+              if ($sz -lt 10000) { throw "Rendered PNG unexpectedly small ($sz bytes): $p" }
+              Write-Host "Verified $png ($sz bytes)"
+            }
+
+            # Verify bundled locales exist inside _internal/locales/ (not raw keys)
+            $enLocale = Join-Path $appDir "_internal\locales\en.json"
+            if (-not (Test-Path $enLocale)) { throw "Bundled locale missing: $enLocale" }
+            # Verify no config.json/cache leaked into _internal during --doctor / --render-test
+            if (Test-Path (Join-Path $appDir "_internal\config.json")) {
+              throw "config.json must not be created inside _internal/"
+            }
+          } finally {
+            Pop-Location
+          }
+      - name: Package portable ZIP + SHA-256
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}".TrimStart("v")
           $zipPath = "dist\StartHub-v$tag-win64-portable.zip"
           Compress-Archive -Path "dist\StartHub\*" -DestinationPath $zipPath -Force
           $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()

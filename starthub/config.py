@@ -7,16 +7,50 @@ import logging
 import os
 from pathlib import Path
 import re
+import sys
 import tempfile
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
 logger = logging.getLogger("starthub.config")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-LOCALES_DIR = REPO_ROOT / "locales"
-DEFAULT_CONFIG_PATH = REPO_ROOT / "config.json"
-DEFAULT_CACHE_DIR = REPO_ROOT / "cache"
+
+def resolve_app_dirs() -> Tuple[bool, Path, Path]:
+    """Resolve (is_frozen, bundle_dir, app_dir) for both source and PyInstaller 6 frozen builds.
+
+    - `bundle_dir`: read-only bundled assets (`locales/`, default `packs/`, `config.example.json`).
+      Inside PyInstaller 6 `onedir`, this is `sys._MEIPASS` (`<install>/_internal`).
+    - `app_dir`: writable user directory right next to `StartHub.exe` when frozen,
+      or the repository root when running from source (`config.json`, `cache/`, `examples/`, `packs/`).
+    """
+    is_frozen = bool(getattr(sys, "frozen", False))
+    source_root = Path(__file__).resolve().parent.parent
+    if is_frozen:
+        bundle_dir = Path(getattr(sys, "_MEIPASS", source_root)).resolve()
+        app_dir = Path(sys.executable).resolve().parent
+        return True, bundle_dir, app_dir
+    return False, source_root, source_root
+
+
+IS_FROZEN, BUNDLE_DIR, APP_DIR = resolve_app_dirs()
+REPO_ROOT = APP_DIR  # Backwards-compatible alias for writable user-facing directory
+LOCALES_DIR = (BUNDLE_DIR / "locales") if (BUNDLE_DIR / "locales").is_dir() else (APP_DIR / "locales")
+DEFAULT_CONFIG_PATH = APP_DIR / "config.json"
+DEFAULT_CACHE_DIR = APP_DIR / "cache"
+
+
+def find_bundled_file(rel_path: str | Path) -> Path:
+    """Locate a user-overridable asset: check APP_DIR first, then BUNDLE_DIR (`_internal`)."""
+    rel = Path(rel_path)
+    if rel.is_absolute():
+        return rel
+    user_candidate = APP_DIR / rel
+    if user_candidate.exists():
+        return user_candidate
+    bundle_candidate = BUNDLE_DIR / rel
+    if bundle_candidate.exists():
+        return bundle_candidate
+    return user_candidate
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 CONFIG_SCHEMA_VERSION = 2
@@ -430,7 +464,7 @@ def save_config_patch(path: Optional[Path | str], patch: Dict[str, Any]) -> bool
     cfg_path = Path(path) if path is not None else DEFAULT_CONFIG_PATH
     existing = load_raw_user_config(cfg_path)
     if not existing:
-        example = REPO_ROOT / "config.example.json"
+        example = find_bundled_file("config.example.json")
         if example.is_file():
             existing = read_json_safe(example, {})
         if not isinstance(existing, dict) or not existing:

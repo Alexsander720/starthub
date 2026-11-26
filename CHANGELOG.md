@@ -2,6 +2,14 @@
 
 All notable changes to StartHub are documented in this file.
 
+## [0.1.1] - 2026-11-26
+
+### Fixed
+- **Portable `StartHub.exe` startup crash (`ImportError: attempted relative import with no known parent package`):** Added a dedicated top-level PyInstaller entrypoint (`starthub_launcher.py`), converted `starthub/__main__.py` to absolute imports, and collected all `starthub` + `winrt` submodules/DLLs in `starthub.spec`.
+- **PyInstaller 6 frozen path separation (`BUNDLE_DIR` vs `APP_DIR`):** Bundled read-only assets (`locales/`, default `config.example.json`, default `packs/`) now load reliably from `sys._MEIPASS` (`_internal/`), while user-editable `config.json`, `cache/`, logs, `examples/`, and user `packs/` stay right next to `StartHub.exe`.
+- **Frozen runtime safety:** Fixed `ensure_interactive_desktop()` respawn command for frozen executables (never passes `-m starthub` to `StartHub.exe`), switched Start11 Tile Pack Switcher to run in-process inside `StartHub.exe`, and added safe `stdout`/`stderr` handling for `console=False` Windows GUI builds when running `--version`, `--doctor`, or `--render-test`.
+- **Automated frozen-EXE CI gate:** `release.yml` now copies `dist\StartHub` to an isolated temporary directory outside the repository and verifies `StartHub.exe --version`, `--doctor`, and `--demo --render-test` (all 3 rendered PNGs + bundled locales) before packaging and publishing any release.
+
 ## [0.1.0] - 2026-11-26
 
 ### Added

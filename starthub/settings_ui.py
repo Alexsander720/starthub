@@ -28,6 +28,7 @@ from .config import (
     REPO_ROOT,
     deep_merge,
     export_profile_data,
+    find_bundled_file,
     load_raw_user_config,
     migrate_config,
     save_config_patch,
@@ -623,7 +624,7 @@ class SettingsWindow:
             self._rebuild_cj_list()
 
     def _open_examples_dir(self) -> None:
-        ex_dir = REPO_ROOT / "examples" / "custom_json"
+        ex_dir = find_bundled_file(Path("examples") / "custom_json")
         if IS_WINDOWS and ex_dir.is_dir():
             os.startfile(str(ex_dir))
 

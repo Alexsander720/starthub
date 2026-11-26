@@ -24,9 +24,12 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from PIL import Image, ImageTk
 
 from .config import (
+    APP_DIR,
     DEFAULT_CACHE_DIR,
     DEFAULT_CONFIG_PATH,
+    IS_FROZEN,
     REPO_ROOT,
+    find_bundled_file,
     load_config,
     save_config_patch,
 )
@@ -623,19 +626,29 @@ class StartHubApp:
 
         def _worker():
             try:
-                script = REPO_ROOT / "tools" / "tile_switcher.py"
-                packs_dir = str(self.config["widgets"]["tile_switcher"].get("packs_dir") or "packs")
-                res = subprocess.run(
-                    [sys.executable, str(script), "--packs-dir", packs_dir, "--cycle", "--apply"],
-                    cwd=str(REPO_ROOT),
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    creationflags=CREATE_NO_WINDOW,
-                )
-                if res.returncode != 0:
-                    self.hub.show_toast(self.i18n.t("tiles.toast_error"), 3.5)
-                    return
+                packs_cfg = str(self.config["widgets"]["tile_switcher"].get("packs_dir") or "packs")
+                packs_path = find_bundled_file(packs_cfg)
+                script = APP_DIR / "tools" / "tile_switcher.py"
+                if IS_FROZEN or not script.is_file():
+                    from tools import tile_switcher as _ts
+
+                    _ts.cycle_pack(
+                        packs_dir=packs_path,
+                        state_file=DEFAULT_CACHE_DIR / "tile_pack.txt",
+                        apply=True,
+                    )
+                else:
+                    res = subprocess.run(
+                        [sys.executable, str(script), "--packs-dir", str(packs_path), "--cycle", "--apply"],
+                        cwd=str(APP_DIR),
+                        capture_output=True,
+                        text=True,
+                        timeout=30,
+                        creationflags=CREATE_NO_WINDOW,
+                    )
+                    if res.returncode != 0:
+                        self.hub.show_toast(self.i18n.t("tiles.toast_error"), 3.5)
+                        return
                 self._tile_pack_label = self._read_current_tile_pack()
                 self.hub.show_toast(self.i18n.t("tiles.toast_switched", name=self._tile_pack_label or "OK"))
             except Exception:

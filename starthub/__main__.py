@@ -1,23 +1,69 @@
-"""CLI entrypoint for `python -m starthub`."""
+"""CLI entrypoint for `python -m starthub` and frozen `StartHub.exe`."""
 from __future__ import annotations
 
 import argparse
+import ctypes
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 from pathlib import Path
 import sys
+import traceback
+from typing import Optional
 
-from . import __version__
-from .config import DEFAULT_CACHE_DIR, DEFAULT_CONFIG_PATH, load_config
-from .doctor import format_diagnostics, run_diagnostics
-from .i18n import I18n
-from .providers import ProviderHub
-from .renderer import HubRenderer
-from .surface import SingleInstanceGuard, ensure_interactive_desktop
-from .theme import Theme
+from starthub import __version__
+from starthub.config import DEFAULT_CACHE_DIR, DEFAULT_CONFIG_PATH, IS_FROZEN, load_config
+from starthub.doctor import format_diagnostics, run_diagnostics
+from starthub.i18n import I18n
+from starthub.providers import ProviderHub
+from starthub.renderer import HubRenderer
+from starthub.surface import IS_WINDOWS, SingleInstanceGuard, ensure_interactive_desktop
+from starthub.theme import Theme
+
+_CLI_STDOUT_FLAGS = ("-h", "--help", "--version", "--doctor", "--render-test")
 
 
-def configure_logging(cache_dir: Path) -> None:
+def _ensure_stdio_streams(argv: Optional[list[str]] = None) -> None:
+    """Ensure stdout/stderr are writable in Windows GUI-subsystem frozen executables (`console=False`)."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    args = sys.argv[1:] if argv is None else list(argv)
+    wants_console = any(flag in args for flag in _CLI_STDOUT_FLAGS)
+    attached = False
+    if wants_console and IS_WINDOWS:
+        try:
+            # ATTACH_PARENT_PROCESS = -1 (0xFFFFFFFF)
+            attached = bool(ctypes.windll.kernel32.AttachConsole(ctypes.c_uint(-1)))
+        except Exception:
+            attached = False
+    target = "CONOUT$" if attached else os.devnull
+    if sys.stdout is None:
+        try:
+            sys.stdout = open(target, "w", encoding="utf-8", errors="replace")
+        except OSError:
+            sys.stdout = open(os.devnull, "w", encoding="utf-8")
+    if sys.stderr is None:
+        try:
+            sys.stderr = open(target, "w", encoding="utf-8", errors="replace")
+        except OSError:
+            sys.stderr = open(os.devnull, "w", encoding="utf-8")
+
+
+def _show_fatal_error(exc: BaseException, log_file: Path) -> None:
+    logging.getLogger("starthub").critical("Unhandled fatal error", exc_info=(type(exc), exc, exc.__traceback__))
+    if IS_FROZEN and IS_WINDOWS:
+        try:
+            msg = (
+                f"StartHub v{__version__} encountered an unexpected error:\n\n"
+                f"{type(exc).__name__}: {exc}\n\n"
+                f"Details saved to:\n{log_file}"
+            )
+            ctypes.windll.user32.MessageBoxW(None, msg, f"StartHub v{__version__} — Startup Error", 0x10)
+        except Exception:
+            pass
+
+
+def configure_logging(cache_dir: Path) -> Path:
     log_dir = cache_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "starthub.log"
@@ -28,11 +74,12 @@ def configure_logging(cache_dir: Path) -> None:
             RotatingFileHandler(str(log_file), maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8"),
         ],
     )
+    return log_file
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="python -m starthub",
+        prog="StartHub.exe" if IS_FROZEN else "python -m starthub",
         description="StartHub — Modular Windows 11 & Start11 acrylic companion panels.",
     )
     parser.add_argument("--version", action="version", version=f"StartHub {__version__}")
@@ -57,6 +104,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_stdio_streams(argv)
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -108,9 +156,9 @@ def main(argv: list[str] | None = None) -> int:
             print("StartHub is already running (check your system tray).", file=sys.stderr)
             return 0
 
-    configure_logging(DEFAULT_CACHE_DIR)
+    log_file = configure_logging(DEFAULT_CACHE_DIR)
 
-    from .app import StartHubApp
+    from starthub.app import StartHubApp
 
     try:
         app = StartHubApp(
@@ -121,6 +169,11 @@ def main(argv: list[str] | None = None) -> int:
             overrides=overrides,
         )
         app.run()
+    except Exception as exc:
+        _show_fatal_error(exc, log_file)
+        if not IS_FROZEN:
+            traceback.print_exc()
+        return 1
     finally:
         if guard is not None:
             guard.release()

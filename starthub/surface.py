@@ -84,11 +84,33 @@ class SingleInstanceGuard:
             self._handle = None
 
 
+def build_interactive_respawn_cmd(
+    argv: Optional[List[str]] = None,
+    *,
+    is_frozen: Optional[bool] = None,
+    executable: Optional[str] = None,
+) -> Tuple[str, str]:
+    """Build (cmd_line, working_dir) for re-launching StartHub on WinSta0\\Default."""
+    frozen = bool(getattr(sys, "frozen", False)) if is_frozen is None else bool(is_frozen)
+    exe = executable or sys.executable
+    raw_args = sys.argv[1:] if argv is None else list(argv)
+    extra = [a for a in raw_args if a != "--on-default"]
+    if frozen:
+        cmd_line = subprocess.list2cmdline([exe, "--on-default", *extra])
+        work_dir = os.path.dirname(os.path.abspath(exe))
+        return cmd_line, work_dir
+    pyw_exe = os.path.join(os.path.dirname(exe), "pythonw.exe")
+    if not os.path.exists(pyw_exe):
+        pyw_exe = exe
+    cmd_line = subprocess.list2cmdline([pyw_exe, "-m", "starthub", "--on-default", *extra])
+    return cmd_line, os.getcwd()
+
+
 def ensure_interactive_desktop() -> None:
     """If launched from a non-interactive desktop session, respawn onto WinSta0\\Default."""
     if not IS_WINDOWS or win32process is None or win32con is None:
         return
-    if any(flag in sys.argv for flag in ("--render-test", "--on-default", "--doctor")):
+    if any(flag in sys.argv for flag in ("--render-test", "--on-default", "--doctor", "--version", "-h", "--help")):
         return
     try:
         u32 = ctypes.windll.user32
@@ -102,14 +124,9 @@ def ensure_interactive_desktop() -> None:
             si.lpDesktop = "WinSta0\\Default"
             si.dwFlags = win32con.STARTF_USESHOWWINDOW
             si.wShowWindow = win32con.SW_SHOW
-            py_exe = sys.executable
-            pyw_exe = os.path.join(os.path.dirname(py_exe), "pythonw.exe")
-            if not os.path.exists(pyw_exe):
-                pyw_exe = py_exe
-            extra = " ".join(a for a in sys.argv[1:] if a != "--on-default")
-            cmd_line = f'"{pyw_exe}" -m starthub --on-default {extra}'.strip()
+            cmd_line, work_dir = build_interactive_respawn_cmd()
             win32process.CreateProcess(
-                None, cmd_line, None, None, False, 0, None, os.getcwd(), si
+                None, cmd_line, None, None, False, 0, None, work_dir, si
             )
             sys.exit(0)
     except Exception:

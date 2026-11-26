@@ -52,7 +52,7 @@
 
 ## Быстрый старт
 
-1. **Портативная версия (без Python):** скачайте `StartHub-v0.1.0-win64-portable.zip` из [Releases](https://github.com/Alexsander720/starthub/releases), распакуйте и запустите **`StartHub.exe`**.
+1. **Портативная версия (без Python):** скачайте `StartHub-v0.1.1-win64-portable.zip` из [Releases](https://github.com/Alexsander720/starthub/releases), распакуйте и запустите **`StartHub.exe`**.
 2. **Из исходников:** клонируйте репозиторий и дважды кликните **`Install.cmd`** (или выполните `.\install.ps1 -Optional -AutoStart` в PowerShell).
 3. **Посмотреть демо за 10 секунд:** `.\.venv\Scripts\python.exe -m starthub --demo --preview`.
 4. **Запуск в фоне:** дважды кликните **`StartHub.cmd`**, нажмите **Win** или **`Alt+Space`**. Настройки — в меню иконки трея (**Настройки...**).

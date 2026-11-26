@@ -65,7 +65,7 @@ Full color, widget, and Zero-Overlap guide: **[docs/CUSTOMIZATION.md](docs/CUSTO
 ## Quick Start (2 Minutes)
 
 ### Option A — Portable Executable (No Python Required)
-Download **`StartHub-v0.1.0-win64-portable.zip`** from [Releases](https://github.com/Alexsander720/starthub/releases), extract it anywhere, and double-click **`StartHub.exe`**.
+Download **`StartHub-v0.1.1-win64-portable.zip`** from [Releases](https://github.com/Alexsander720/starthub/releases), extract it anywhere, and double-click **`StartHub.exe`**.
 
 ### Option B — Source Install (Windows 11)
 Download or clone the repo, then **double-click `Install.cmd`** (bypasses PowerShell ExecutionPolicy automatically), or run in PowerShell:
