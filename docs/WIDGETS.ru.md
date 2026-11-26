@@ -288,16 +288,25 @@ Register-ScheduledTask -TaskName "StartHub-AI-Quotas" -Action $Action -Trigger $
 
 Позволяет в 1 клик менять оформление всех кастомных иконок плиток Start11 (например, *Минимал*, *Аниме*, *Неон*) с автобекапом реестра `.reg` и откатом при ошибке.
 
-1. Создайте подпапку в `packs/` для каждого пака (пример: [`packs/example_minimal/`](../packs/example_minimal/)).
-2. Сложите туда PNG-картинки плиток и создайте файл `pack.json`:
-   ```json
-   {
-     "name": "Minimal",
-     "description": "Минималистичные иконки плиток",
-     "tiles": {
-       "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Windows PowerShell\\Windows PowerShell.lnk": "sample_terminal.png"
-     }
-   }
+### Самый быстрый способ — выгрузить текущие плитки одной командой (`--export`)
+
+1. Настройте картинки плиток прямо в Start11 мышкой (**ПКМ по плитке → Выбрать изображение плитки**).
+2. Выполните одну команду — StartHub сам прочитает ветку `CustomTiles` из реестра, скопирует картинки и создаст готовый `pack.json`:
+   ```powershell
+   .\.venv\Scripts\python.exe tools\tile_switcher.py --export my_pack --name "Мой пак"
    ```
-   - Ключ — путь к ярлыку `.lnk` (или AUMID приложения), закреплённому в Start11; значение — имя PNG-файла в папке пака.
+   *(Повторите для второго набора, например `--export minimal --name "Минимал"`; для перезаписи существующего пака добавьте `--overwrite`.)*
 3. Включите **Start11 Tile Switcher** в **Настройки → Widgets & Layout**. Если виджет **Tasks** включён, кнопка переключения паков появится в его шапке; если выключен — отобразится отдельной компактной панелью.
+
+### Ручной формат `pack.json`
+
+Каждый пак лежит в `packs/<название>/pack.json` (пример: [`packs/example_minimal/`](../packs/example_minimal/)):
+```json
+{
+  "name": "Minimal",
+  "description": "Минималистичные иконки плиток",
+  "tiles": {
+    "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Windows PowerShell\\Windows PowerShell.lnk": "sample_terminal.png"
+  }
+}
+```

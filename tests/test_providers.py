@@ -150,6 +150,43 @@ def test_tile_switcher_discovers_and_blocks_traversal(tmp_path: Path):
         tile_switcher.resolve_pack_tiles(evil, {"tiles": {"A": "../secret.png"}})
 
 
+def test_tile_switcher_export_current_tiles_dedupes_and_copies(tmp_path: Path):
+    src_dir = tmp_path / "src_imgs"
+    src_dir.mkdir()
+    img_a = src_dir / "code.png"
+    img_b = src_dir / "term.png"
+    img_a.write_bytes(b"PNG-A")
+    img_b.write_bytes(b"PNG-B")
+
+    packs_dir = tmp_path / "packs"
+    entries = {
+        r"C:\Apps\Code.lnk": str(img_a),
+        r"C:_Apps_Code.lnk": str(img_a),  # Start11 twin key should be deduplicated
+        r"C:\Apps\Term.lnk": str(img_b),
+        r"C:\Apps\Missing.lnk": str(src_dir / "missing.png"),
+    }
+    res = tile_switcher.export_current_tiles(
+        "my_setup",
+        display_name="My Setup",
+        packs_dir=packs_dir,
+        entries=entries,
+    )
+    assert res["pack"] == "my_setup"
+    assert res["tiles_exported"] == 2
+    assert res["images_copied"] == 2
+    assert res["skipped"] == 1
+
+    # Exported pack must immediately pass discovery & dry-run validation
+    packs = tile_switcher.discover_packs(packs_dir)
+    assert len(packs) == 1
+    dry = tile_switcher.apply_pack("my_setup", packs_dir=packs_dir, dry_run=True)
+    assert dry["tiles"] == 2 and dry["name"] == "My Setup"
+
+    # Overwrite protection works unless overwrite=True
+    with pytest.raises(FileExistsError):
+        tile_switcher.export_current_tiles("my_setup", packs_dir=packs_dir, entries=entries)
+
+
 def test_privacy_scanner_catches_leaks_and_passes_repo(tmp_path: Path):
     # Clean tree passes
     assert scan_private.scan_tree(scan_private.ROOT) == []

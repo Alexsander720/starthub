@@ -384,18 +384,27 @@ The Media Player works with Spotify immediately via Windows SMTC without any key
 
 Switch all your custom Start11 tile icons between themes (e.g. *Minimal*, *Anime*, *Dark Neon*) in 1 click with automatic `.reg` backup and atomic rollback on failure.
 
-1. Create a subfolder inside `packs/` for each pack (see [`packs/example_minimal/`](../packs/example_minimal/)).
-2. Drop your PNG tile images into that folder and create `pack.json`:
-   ```json
-   {
-     "name": "Minimal",
-     "description": "Clean geometric tile icons",
-     "tiles": {
-       "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Windows PowerShell\\Windows PowerShell.lnk": "sample_terminal.png"
-     }
-   }
+### Fastest Way — Export Your Current Start11 Tiles Automatically (`--export`)
+
+1. Set your custom tile images right inside Start11 (**Right-Click tile → Choose custom tile image**).
+2. Run one command to snapshot all your current Start11 custom tiles (images + `pack.json`) into `packs/`:
+   ```powershell
+   .\.venv\Scripts\python.exe tools\tile_switcher.py --export my_pack --name "My Pack"
    ```
-   - Each key is the full `.lnk` shortcut path (or Store app AUMID) pinned in Start11; each value is the PNG filename inside that pack folder.
+   *(Repeat whenever you design another theme in Start11, e.g. `--export neon --name "Neon"` — pass `--overwrite` to update an existing pack.)*
 3. Enable **Start11 Tile Switcher** in **Settings → Widgets & Layout**.
-   - When **Tasks** is enabled, the quick-switch pill appears neatly in the Tasks card header.
+   - When **Tasks** is enabled, the 1-click pack switcher pill appears in the Tasks header.
    - When **Tasks** is disabled, StartHub renders a dedicated **Start11 Tile Pack** bar on the wing.
+
+### Manual `pack.json` Format
+
+Packs live under `packs/<pack_name>/pack.json` (see [`packs/example_minimal/`](../packs/example_minimal/)):
+```json
+{
+  "name": "Minimal",
+  "description": "Clean geometric tile icons",
+  "tiles": {
+    "C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Windows PowerShell\\Windows PowerShell.lnk": "sample_terminal.png"
+  }
+}
+```
