@@ -20,7 +20,7 @@ jobs:
       - name: Privacy and secrets scan
         run: python tools/scan_private.py
       - name: Run headless test suite
-        run: pytest -v
+        run: python -m pytest -v
       - name: Smoke-check --doctor CLI
         run: python -m starthub --doctor
 
@@ -38,7 +38,7 @@ jobs:
       - name: Privacy and secrets scan
         run: python tools/scan_private.py
       - name: Run full Windows test suite
-        run: pytest -v
+        run: python -m pytest -v
       - name: Smoke-check --doctor & --render-test
         run: |
           python -m starthub --doctor

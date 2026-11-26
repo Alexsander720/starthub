@@ -23,7 +23,7 @@ jobs:
       - name: Privacy scan & tests gate
         run: |
           python tools/scan_private.py
-          pytest -v
+          python -m pytest -v
       - name: Build source release ZIP + SHA-256
         run: python tools/build_release.py
       - name: Build portable Windows x64 executable ZIP + SHA-256
